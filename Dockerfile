@@ -10,7 +10,10 @@ COPY cmd ./cmd
 COPY internal ./internal
 COPY migrations ./migrations
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /out/job-tracker-api ./cmd/api
+ARG TARGETOS
+ARG TARGETARCH
+
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/job-tracker-api ./cmd/api
 
 FROM alpine:3.22
 WORKDIR /app
