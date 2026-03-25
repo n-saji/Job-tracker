@@ -22,6 +22,7 @@ type Job struct {
 	LinkedInJobURL string
 	ResumeLink     string
 	Status         string
+	DiscardReason  *string
 	SalaryText     string
 	IsEasyApply    bool
 	AppliedAt      time.Time
@@ -38,30 +39,35 @@ type CreateJobParams struct {
 	LinkedInJobURL string
 	ResumeLink     string
 	Status         string
+	DiscardReason  *string
 	SalaryText     string
 	IsEasyApply    bool
 	AppliedAt      time.Time
 }
 
 type UpdateJobParams struct {
-	CompanyName    *string
-	RoleTitle      *string
-	Location       *string
-	ApplyLink      *string
-	LinkedInJobURL *string
-	ResumeLink     *string
-	Status         *string
-	SalaryText     *string
-	IsEasyApply    *bool
-	AppliedAt      *time.Time
+	CompanyName        *string
+	RoleTitle          *string
+	Location           *string
+	ApplyLink          *string
+	LinkedInJobURL     *string
+	ResumeLink         *string
+	Status             *string
+	DiscardReason      *string
+	ClearDiscardReason bool
+	SalaryText         *string
+	IsEasyApply        *bool
+	AppliedAt          *time.Time
 }
 
 type ListJobsParams struct {
-	Page     int
-	Limit    int
-	Status   string
-	Company  string
-	Location string
+	Page          int
+	Limit         int
+	Status        string
+	DiscardReason string
+	IncludeDiscarded bool
+	Company       string
+	Location      string
 }
 
 type JobDAO interface {
@@ -70,6 +76,7 @@ type JobDAO interface {
 	List(ctx context.Context, params ListJobsParams) ([]Job, int64, error)
 	Update(ctx context.Context, id uuid.UUID, params UpdateJobParams) (*Job, error)
 	SoftDelete(ctx context.Context, id uuid.UUID) error
+	SoftDeleteMany(ctx context.Context, ids []uuid.UUID) (int64, error)
 	ExistsByApplyLink(ctx context.Context, applyLink string) (bool, error)
 }
 
@@ -85,11 +92,11 @@ func (d *PgxJobDAO) Create(ctx context.Context, params CreateJobParams) (*Job, e
 	query := `
 		INSERT INTO jobs (
 company_name, role_title, location, apply_link, linkedin_job_url,
-resume_link, status, salary_text, is_easy_apply, applied_at
+resume_link, status, discard_reason, salary_text, is_easy_apply, applied_at
 )
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 		RETURNING id, company_name, role_title, location, apply_link, linkedin_job_url,
-			resume_link, status, salary_text, is_easy_apply, applied_at, created_at, updated_at, deleted_at
+			resume_link, status, discard_reason, salary_text, is_easy_apply, applied_at, created_at, updated_at, deleted_at
 	`
 
 	job, err := scanJob(d.pool.QueryRow(ctx, query,
@@ -100,6 +107,7 @@ resume_link, status, salary_text, is_easy_apply, applied_at
 		params.LinkedInJobURL,
 		params.ResumeLink,
 		params.Status,
+		params.DiscardReason,
 		params.SalaryText,
 		params.IsEasyApply,
 		params.AppliedAt,
@@ -117,7 +125,7 @@ resume_link, status, salary_text, is_easy_apply, applied_at
 func (d *PgxJobDAO) GetByID(ctx context.Context, id uuid.UUID) (*Job, error) {
 	query := `
 		SELECT id, company_name, role_title, location, apply_link, linkedin_job_url,
-			resume_link, status, salary_text, is_easy_apply, applied_at, created_at, updated_at, deleted_at
+			resume_link, status, discard_reason, salary_text, is_easy_apply, applied_at, created_at, updated_at, deleted_at
 		FROM jobs
 		WHERE id = $1 AND deleted_at IS NULL
 	`
@@ -142,6 +150,13 @@ func (d *PgxJobDAO) List(ctx context.Context, params ListJobsParams) ([]Job, int
 		baseWhere += fmt.Sprintf(" AND status = $%d", argPos)
 		args = append(args, params.Status)
 		argPos++
+	} else if !params.IncludeDiscarded {
+		baseWhere += " AND status <> 'discarded'"
+	}
+	if params.DiscardReason != "" {
+		baseWhere += fmt.Sprintf(" AND discard_reason = $%d", argPos)
+		args = append(args, params.DiscardReason)
+		argPos++
 	}
 	if params.Company != "" {
 		baseWhere += fmt.Sprintf(" AND company_name ILIKE $%d", argPos)
@@ -161,7 +176,7 @@ func (d *PgxJobDAO) List(ctx context.Context, params ListJobsParams) ([]Job, int
 	}
 
 	offset := (params.Page - 1) * params.Limit
-	listQuery := "\n\t\tSELECT id, company_name, role_title, location, apply_link, linkedin_job_url,\n\t\t\tresume_link, status, salary_text, is_easy_apply, applied_at, created_at, updated_at, deleted_at\n\t\tFROM jobs " + baseWhere +
+	listQuery := "\n\t\tSELECT id, company_name, role_title, location, apply_link, linkedin_job_url,\n\t\t\tresume_link, status, discard_reason, salary_text, is_easy_apply, applied_at, created_at, updated_at, deleted_at\n\t\tFROM jobs " + baseWhere +
 		fmt.Sprintf(" ORDER BY updated_at DESC LIMIT $%d OFFSET $%d", argPos, argPos+1)
 
 	listArgs := append(args, params.Limit, offset)
@@ -227,6 +242,13 @@ func (d *PgxJobDAO) Update(ctx context.Context, id uuid.UUID, params UpdateJobPa
 		args = append(args, *params.Status)
 		argPos++
 	}
+	if params.DiscardReason != nil {
+		setClauses = append(setClauses, fmt.Sprintf("discard_reason = $%d", argPos))
+		args = append(args, *params.DiscardReason)
+		argPos++
+	} else if params.ClearDiscardReason {
+		setClauses = append(setClauses, "discard_reason = NULL")
+	}
 	if params.SalaryText != nil {
 		setClauses = append(setClauses, fmt.Sprintf("salary_text = $%d", argPos))
 		args = append(args, *params.SalaryText)
@@ -253,7 +275,7 @@ func (d *PgxJobDAO) Update(ctx context.Context, id uuid.UUID, params UpdateJobPa
 		SET %s
 		WHERE id = $%d AND deleted_at IS NULL
 		RETURNING id, company_name, role_title, location, apply_link, linkedin_job_url,
-			resume_link, status, salary_text, is_easy_apply, applied_at, created_at, updated_at, deleted_at
+			resume_link, status, discard_reason, salary_text, is_easy_apply, applied_at, created_at, updated_at, deleted_at
 	`, strings.Join(setClauses, ", "), argPos)
 
 	args = append(args, id)
@@ -288,6 +310,23 @@ func (d *PgxJobDAO) SoftDelete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+func (d *PgxJobDAO) SoftDeleteMany(ctx context.Context, ids []uuid.UUID) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	commandTag, err := d.pool.Exec(ctx, `
+		UPDATE jobs
+		SET deleted_at = NOW(), updated_at = NOW()
+		WHERE id = ANY($1) AND deleted_at IS NULL
+	`, ids)
+	if err != nil {
+		return 0, err
+	}
+
+	return commandTag.RowsAffected(), nil
+}
+
 func (d *PgxJobDAO) ExistsByApplyLink(ctx context.Context, applyLink string) (bool, error) {
 	var exists bool
 	if err := d.pool.QueryRow(ctx, `
@@ -318,6 +357,7 @@ func scanJob(row rowScanner) (*Job, error) {
 		&job.LinkedInJobURL,
 		&job.ResumeLink,
 		&job.Status,
+		&job.DiscardReason,
 		&job.SalaryText,
 		&job.IsEasyApply,
 		&job.AppliedAt,

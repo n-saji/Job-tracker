@@ -10,8 +10,9 @@ type CreateJobRequest struct {
 	LinkedInJobURL string    `json:"linkedin_job_url"`
 	ResumeLink     string    `json:"resume_link"`
 	Status         string    `json:"status"`
+	DiscardReason  string    `json:"discard_reason"`
 	SalaryText     string    `json:"salary_text"`
-	IsEasyApply    string      `json:"is_easy_apply"`
+	IsEasyApply    string    `json:"is_easy_apply"`
 	AppliedAt      time.Time `json:"applied_at"`
 }
 
@@ -23,9 +24,14 @@ type UpdateJobRequest struct {
 	LinkedInJobURL *string    `json:"linkedin_job_url"`
 	ResumeLink     *string    `json:"resume_link"`
 	Status         *string    `json:"status"`
+	DiscardReason  *string    `json:"discard_reason"`
 	SalaryText     *string    `json:"salary_text"`
 	IsEasyApply    *bool      `json:"is_easy_apply"`
 	AppliedAt      *time.Time `json:"applied_at"`
+}
+
+type BulkDeleteJobsRequest struct {
+	IDs []string `json:"ids"`
 }
 
 type JobResponse struct {
@@ -37,6 +43,7 @@ type JobResponse struct {
 	LinkedInJobURL string     `json:"linkedin_job_url"`
 	ResumeLink     string     `json:"resume_link"`
 	Status         string     `json:"status"`
+	DiscardReason  *string    `json:"discard_reason,omitempty"`
 	SalaryText     string     `json:"salary_text"`
 	IsEasyApply    bool       `json:"is_easy_apply"`
 	AppliedAt      time.Time  `json:"applied_at"`
@@ -54,4 +61,8 @@ type ListJobsResponse struct {
 
 type ExistsApplyLinkResponse struct {
 	Exists bool `json:"exists"`
+}
+
+type BulkDeleteJobsResponse struct {
+	DeletedCount int `json:"deleted_count"`
 }

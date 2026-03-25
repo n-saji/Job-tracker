@@ -13,6 +13,7 @@ const (
 	StatusOffer     = "offer"
 	StatusRejected  = "rejected"
 	StatusWithdrawn = "withdrawn"
+	StatusDiscarded = "discarded"
 )
 
 var AllowedStatuses = map[string]struct{}{
@@ -22,4 +23,21 @@ var AllowedStatuses = map[string]struct{}{
 	StatusOffer:     {},
 	StatusRejected:  {},
 	StatusWithdrawn: {},
+	StatusDiscarded: {},
+}
+
+const (
+	DiscardReasonHighApplicants    = "high_applicants"
+	DiscardReasonSecurityClearance = "security_clearance"
+	DiscardReasonLessExperience    = "less_experience"
+	DiscardReasonCitizenship       = "citizenship"
+	DiscardReasonNotFit            = "not_fit"
+)
+
+var AllowedDiscardReasons = map[string]struct{}{
+	DiscardReasonHighApplicants:    {},
+	DiscardReasonSecurityClearance: {},
+	DiscardReasonLessExperience:    {},
+	DiscardReasonCitizenship:       {},
+	DiscardReasonNotFit:            {},
 }

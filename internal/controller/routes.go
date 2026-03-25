@@ -47,6 +47,7 @@ func NewRouter(jobService *service.JobService, requestTimeout time.Duration) htt
 
 	r.Route("/jobs", func(r chi.Router) {
 		r.Post("/", jobController.CreateJob)
+		r.Post("/bulk-delete", jobController.BulkDeleteJobs)
 		r.Get("/", jobController.ListJobs)
 		r.Get("/exists", jobController.ExistsByApplyLink)
 		r.Get("/{id}", jobController.GetJob)

@@ -64,10 +64,12 @@ func (c *JobController) ListJobs(w http.ResponseWriter, r *http.Request) {
 	page := parseIntQuery(r, "page", globals.DefaultPage)
 	limit := parseIntQuery(r, "limit", globals.DefaultLimit)
 	status := r.URL.Query().Get("status")
+	discardReason := r.URL.Query().Get("discard_reason")
+	includeDiscarded := parseBoolQuery(r, "include_discarded", false)
 	company := r.URL.Query().Get("company")
 	location := r.URL.Query().Get("location")
 
-	jobs, total, normalizedPage, normalizedLimit, err := c.service.List(ctx, page, limit, status, company, location)
+	jobs, total, normalizedPage, normalizedLimit, err := c.service.List(ctx, page, limit, status, discardReason, includeDiscarded, company, location)
 	if err != nil {
 		writeServiceError(w, err)
 		return
@@ -121,6 +123,25 @@ func (c *JobController) DeleteJob(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (c *JobController) BulkDeleteJobs(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := service.WithTimeout(r.Context(), c.requestTimeout)
+	defer cancel()
+
+	var req dto.BulkDeleteJobsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, globals.CodeBadRequest, "invalid request payload")
+		return
+	}
+
+	deletedCount, err := c.service.DeleteMany(ctx, req.IDs)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, dto.BulkDeleteJobsResponse{DeletedCount: deletedCount})
+}
+
 func (c *JobController) ExistsByApplyLink(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := service.WithTimeout(r.Context(), c.requestTimeout)
 	defer cancel()
@@ -145,6 +166,7 @@ func mapJob(job *dao.Job) dto.JobResponse {
 		LinkedInJobURL: job.LinkedInJobURL,
 		ResumeLink:     job.ResumeLink,
 		Status:         job.Status,
+		DiscardReason:  job.DiscardReason,
 		SalaryText:     job.SalaryText,
 		IsEasyApply:    job.IsEasyApply,
 		AppliedAt:      job.AppliedAt,
@@ -161,6 +183,20 @@ func parseIntQuery(r *http.Request, key string, fallback int) int {
 	}
 
 	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+
+	return parsed
+}
+
+func parseBoolQuery(r *http.Request, key string, fallback bool) bool {
+	value := r.URL.Query().Get(key)
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.ParseBool(value)
 	if err != nil {
 		return fallback
 	}
