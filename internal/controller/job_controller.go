@@ -65,8 +65,9 @@ func (c *JobController) ListJobs(w http.ResponseWriter, r *http.Request) {
 	limit := parseIntQuery(r, "limit", globals.DefaultLimit)
 	status := r.URL.Query().Get("status")
 	company := r.URL.Query().Get("company")
+	location := r.URL.Query().Get("location")
 
-	jobs, total, normalizedPage, normalizedLimit, err := c.service.List(ctx, page, limit, status, company)
+	jobs, total, normalizedPage, normalizedLimit, err := c.service.List(ctx, page, limit, status, company, location)
 	if err != nil {
 		writeServiceError(w, err)
 		return

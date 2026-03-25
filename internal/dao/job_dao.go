@@ -57,10 +57,11 @@ type UpdateJobParams struct {
 }
 
 type ListJobsParams struct {
-	Page    int
-	Limit   int
-	Status  string
-	Company string
+	Page     int
+	Limit    int
+	Status   string
+	Company  string
+	Location string
 }
 
 type JobDAO interface {
@@ -147,6 +148,11 @@ func (d *PgxJobDAO) List(ctx context.Context, params ListJobsParams) ([]Job, int
 		args = append(args, "%"+params.Company+"%")
 		argPos++
 	}
+	if params.Location != "" {
+		baseWhere += fmt.Sprintf(" AND location ILIKE $%d", argPos)
+		args = append(args, "%"+params.Location+"%")
+		argPos++
+	}
 
 	countQuery := "SELECT COUNT(1) FROM jobs " + baseWhere
 	var total int64
@@ -156,7 +162,7 @@ func (d *PgxJobDAO) List(ctx context.Context, params ListJobsParams) ([]Job, int
 
 	offset := (params.Page - 1) * params.Limit
 	listQuery := "\n\t\tSELECT id, company_name, role_title, location, apply_link, linkedin_job_url,\n\t\t\tresume_link, status, salary_text, is_easy_apply, applied_at, created_at, updated_at, deleted_at\n\t\tFROM jobs " + baseWhere +
-		fmt.Sprintf(" ORDER BY applied_at DESC, created_at DESC LIMIT $%d OFFSET $%d", argPos, argPos+1)
+		fmt.Sprintf(" ORDER BY updated_at DESC LIMIT $%d OFFSET $%d", argPos, argPos+1)
 
 	listArgs := append(args, params.Limit, offset)
 	rows, err := d.pool.Query(ctx, listQuery, listArgs...)

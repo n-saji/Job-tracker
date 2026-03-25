@@ -7,6 +7,7 @@ const (
 )
 
 const (
+	StatusAdded     = "added"
 	StatusApplied   = "applied"
 	StatusInterview = "interview"
 	StatusOffer     = "offer"
@@ -15,6 +16,7 @@ const (
 )
 
 var AllowedStatuses = map[string]struct{}{
+	StatusAdded:     {},
 	StatusApplied:   {},
 	StatusInterview: {},
 	StatusOffer:     {},

@@ -11,7 +11,7 @@ type CreateJobRequest struct {
 	ResumeLink     string    `json:"resume_link"`
 	Status         string    `json:"status"`
 	SalaryText     string    `json:"salary_text"`
-	IsEasyApply    bool      `json:"is_easy_apply"`
+	IsEasyApply    string      `json:"is_easy_apply"`
 	AppliedAt      time.Time `json:"applied_at"`
 }
 

@@ -43,7 +43,7 @@ func (s *JobService) Create(ctx context.Context, req dto.CreateJobRequest) (*dao
 		ResumeLink:     strings.TrimSpace(req.ResumeLink),
 		Status:         strings.ToLower(strings.TrimSpace(req.Status)),
 		SalaryText:     strings.TrimSpace(req.SalaryText),
-		IsEasyApply:    req.IsEasyApply,
+		IsEasyApply:    bool(strings.EqualFold(req.IsEasyApply, "true")),
 		AppliedAt:      req.AppliedAt,
 	})
 	if err != nil {
@@ -72,7 +72,7 @@ func (s *JobService) GetByID(ctx context.Context, id string) (*dao.Job, error) {
 	return job, nil
 }
 
-func (s *JobService) List(ctx context.Context, page, limit int, status, company string) ([]dao.Job, int64, int, int, error) {
+func (s *JobService) List(ctx context.Context, page, limit int, status, company, location string) ([]dao.Job, int64, int, int, error) {
 	if page <= 0 {
 		page = globals.DefaultPage
 	}
@@ -91,10 +91,11 @@ func (s *JobService) List(ctx context.Context, page, limit int, status, company 
 	}
 
 	jobs, total, err := s.dao.List(ctx, dao.ListJobsParams{
-		Page:    page,
-		Limit:   limit,
-		Status:  status,
-		Company: strings.TrimSpace(company),
+		Page:     page,
+		Limit:    limit,
+		Status:   status,
+		Company:  strings.TrimSpace(company),
+		Location: strings.TrimSpace(location),
 	})
 	if err != nil {
 		return nil, 0, 0, 0, err
@@ -170,7 +171,7 @@ func validateCreate(req dto.CreateJobRequest) error {
 		return fmt.Errorf("invalid status: %w", globals.ErrBadRequest)
 	}
 	if req.AppliedAt.IsZero() {
-		return fmt.Errorf("applied_at is required: %w", globals.ErrBadRequest)
+		req.AppliedAt = time.Now()
 	}
 	return nil
 }

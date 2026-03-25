@@ -5,7 +5,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'job_status') THEN
-        CREATE TYPE job_status AS ENUM ('applied', 'interview', 'offer', 'rejected', 'withdrawn');
+        CREATE TYPE job_status AS ENUM ('added','applied', 'interview', 'offer', 'rejected', 'withdrawn');
     END IF;
 END $$;
 -- +goose StatementEnd
