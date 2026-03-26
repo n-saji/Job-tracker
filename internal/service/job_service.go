@@ -202,6 +202,58 @@ func (s *JobService) DeleteMany(ctx context.Context, ids []string) (int, error) 
 	return int(deletedCount), nil
 }
 
+func (s *JobService) BulkUpdateStatus(ctx context.Context, ids []string, status, discardReason string) (int, error) {
+	if len(ids) == 0 {
+		return 0, fmt.Errorf("ids is required: %w", globals.ErrBadRequest)
+	}
+
+	normalizedStatus := strings.ToLower(strings.TrimSpace(status))
+	if _, ok := globals.AllowedStatuses[normalizedStatus]; !ok {
+		return 0, fmt.Errorf("invalid status: %w", globals.ErrBadRequest)
+	}
+
+	normalizedDiscardReason := strings.ToLower(strings.TrimSpace(discardReason))
+	var targetDiscardReason *string
+	if normalizedStatus == globals.StatusDiscarded {
+		if normalizedDiscardReason == "" {
+			return 0, fmt.Errorf("discard_reason is required when status is discarded: %w", globals.ErrBadRequest)
+		}
+		if _, ok := globals.AllowedDiscardReasons[normalizedDiscardReason]; !ok {
+			return 0, fmt.Errorf("invalid discard_reason: %w", globals.ErrBadRequest)
+		}
+		targetDiscardReason = &normalizedDiscardReason
+	} else if normalizedDiscardReason != "" {
+		return 0, fmt.Errorf("discard_reason is only allowed when status is discarded: %w", globals.ErrBadRequest)
+	}
+
+	parsedIDs := make([]uuid.UUID, 0, len(ids))
+	seen := make(map[uuid.UUID]struct{}, len(ids))
+	for _, id := range ids {
+		trimmed := strings.TrimSpace(id)
+		if trimmed == "" {
+			return 0, fmt.Errorf("id cannot be empty: %w", globals.ErrBadRequest)
+		}
+
+		parsedID, err := uuid.Parse(trimmed)
+		if err != nil {
+			return 0, fmt.Errorf("invalid id: %w", globals.ErrBadRequest)
+		}
+
+		if _, exists := seen[parsedID]; exists {
+			continue
+		}
+		seen[parsedID] = struct{}{}
+		parsedIDs = append(parsedIDs, parsedID)
+	}
+
+	updatedCount, err := s.dao.BulkUpdateStatus(ctx, parsedIDs, normalizedStatus, targetDiscardReason)
+	if err != nil {
+		return 0, err
+	}
+
+	return int(updatedCount), nil
+}
+
 func (s *JobService) ExistsByApplyLink(ctx context.Context, applyLink string) (bool, error) {
 	normalized := normalizeApplyLink(applyLink)
 	if normalized == "" {

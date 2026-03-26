@@ -142,6 +142,25 @@ func (c *JobController) BulkDeleteJobs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, dto.BulkDeleteJobsResponse{DeletedCount: deletedCount})
 }
 
+func (c *JobController) BulkUpdateJobsStatus(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := service.WithTimeout(r.Context(), c.requestTimeout)
+	defer cancel()
+
+	var req dto.BulkUpdateJobsStatusRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, globals.CodeBadRequest, "invalid request payload")
+		return
+	}
+
+	updatedCount, err := c.service.BulkUpdateStatus(ctx, req.IDs, req.Status, req.DiscardReason)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, dto.BulkUpdateJobsStatusResponse{UpdatedCount: updatedCount})
+}
+
 func (c *JobController) ExistsByApplyLink(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := service.WithTimeout(r.Context(), c.requestTimeout)
 	defer cancel()

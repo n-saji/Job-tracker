@@ -34,6 +34,12 @@ type BulkDeleteJobsRequest struct {
 	IDs []string `json:"ids"`
 }
 
+type BulkUpdateJobsStatusRequest struct {
+	IDs           []string `json:"ids"`
+	Status        string   `json:"status"`
+	DiscardReason string   `json:"discard_reason"`
+}
+
 type JobResponse struct {
 	ID             string     `json:"id"`
 	CompanyName    string     `json:"company_name"`
@@ -65,4 +71,8 @@ type ExistsApplyLinkResponse struct {
 
 type BulkDeleteJobsResponse struct {
 	DeletedCount int `json:"deleted_count"`
+}
+
+type BulkUpdateJobsStatusResponse struct {
+	UpdatedCount int `json:"updated_count"`
 }

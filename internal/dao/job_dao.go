@@ -77,6 +77,7 @@ type JobDAO interface {
 	Update(ctx context.Context, id uuid.UUID, params UpdateJobParams) (*Job, error)
 	SoftDelete(ctx context.Context, id uuid.UUID) error
 	SoftDeleteMany(ctx context.Context, ids []uuid.UUID) (int64, error)
+	BulkUpdateStatus(ctx context.Context, ids []uuid.UUID, status string, discardReason *string) (int64, error)
 	ExistsByApplyLink(ctx context.Context, applyLink string) (bool, error)
 }
 
@@ -320,6 +321,23 @@ func (d *PgxJobDAO) SoftDeleteMany(ctx context.Context, ids []uuid.UUID) (int64,
 		SET deleted_at = NOW(), updated_at = NOW()
 		WHERE id = ANY($1) AND deleted_at IS NULL
 	`, ids)
+	if err != nil {
+		return 0, err
+	}
+
+	return commandTag.RowsAffected(), nil
+}
+
+func (d *PgxJobDAO) BulkUpdateStatus(ctx context.Context, ids []uuid.UUID, status string, discardReason *string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	commandTag, err := d.pool.Exec(ctx, `
+		UPDATE jobs
+		SET status = $2, discard_reason = $3, updated_at = NOW()
+		WHERE id = ANY($1) AND deleted_at IS NULL
+	`, ids, status, discardReason)
 	if err != nil {
 		return 0, err
 	}
