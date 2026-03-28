@@ -43,8 +43,10 @@ func main() {
 	defer pool.Close()
 
 	jobDAO := dao.NewPgxJobDAO(pool)
+	resumeQueueDAO := dao.NewPgxResumeQueueDAO(pool)
 	jobService := service.NewJobService(jobDAO)
-	router := controller.NewRouter(jobService, cfg.RequestTimeout)
+	resumeQueueService := service.NewResumeQueueService(jobDAO, resumeQueueDAO, cfg.N8NWebhookURL)
+	router := controller.NewRouter(jobService, resumeQueueService, cfg.RequestTimeout)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.AppPort,

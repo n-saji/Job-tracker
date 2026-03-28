@@ -10,7 +10,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func NewRouter(jobService *service.JobService, requestTimeout time.Duration) http.Handler {
+func NewRouter(jobService *service.JobService, resumeQueueService *service.ResumeQueueService, requestTimeout time.Duration) http.Handler {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -21,9 +21,8 @@ func NewRouter(jobService *service.JobService, requestTimeout time.Duration) htt
 				w.Header().Set("Vary", "Origin")
 			}
 
-
 			if req.Method == http.MethodOptions {
-				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 				w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-CSRF-Token")
 				w.WriteHeader(http.StatusNoContent)
 				return
@@ -36,9 +35,10 @@ func NewRouter(jobService *service.JobService, requestTimeout time.Duration) htt
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(requestTimeout))
 
-	jobController := NewJobController(jobService, requestTimeout)
+	eventBroker := NewJobEventBroker()
+
+	jobController := NewJobController(jobService, resumeQueueService, eventBroker, requestTimeout)
 
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -46,14 +46,26 @@ func NewRouter(jobService *service.JobService, requestTimeout time.Duration) htt
 	})
 
 	r.Route("/jobs", func(r chi.Router) {
-		r.Post("/", jobController.CreateJob)
-		r.Post("/bulk-delete", jobController.BulkDeleteJobs)
-		r.Post("/bulk-update-status", jobController.BulkUpdateJobsStatus)
-		r.Get("/", jobController.ListJobs)
-		r.Get("/exists", jobController.ExistsByApplyLink)
-		r.Get("/{id}", jobController.GetJob)
-		r.Put("/{id}", jobController.UpdateJob)
-		r.Delete("/{id}", jobController.DeleteJob)
+		r.Get("/events", jobController.StreamCreatedJobs)
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.Timeout(requestTimeout))
+			r.Post("/", jobController.CreateJob)
+			r.Post("/bulk-delete", jobController.BulkDeleteJobs)
+			r.Post("/bulk-update-status", jobController.BulkUpdateJobsStatus)
+			r.Post("/{id}/resume-generate", jobController.TriggerResumeGenerate)
+			r.Get("/", jobController.ListJobs)
+			r.Get("/exists", jobController.ExistsByApplyLink)
+			r.Get("/{id}", jobController.GetJob)
+			r.Put("/{id}", jobController.UpdateJob)
+			r.Patch("/{id}/resume-link", jobController.UpdateResumeLink)
+			r.Delete("/{id}", jobController.DeleteJob)
+		})
+	})
+
+	r.Route("/resume-queue", func(r chi.Router) {
+		r.Use(middleware.Timeout(requestTimeout))
+		r.Get("/", jobController.ListResumeQueue)
+		r.Delete("/{job_id}", jobController.DeleteResumeQueueItem)
 	})
 
 	return r

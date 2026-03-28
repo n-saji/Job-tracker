@@ -3,6 +3,7 @@ package controller
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -17,11 +18,13 @@ import (
 
 type JobController struct {
 	service        *service.JobService
+	resumeQueueSvc *service.ResumeQueueService
+	broker         *JobEventBroker
 	requestTimeout time.Duration
 }
 
-func NewJobController(svc *service.JobService, requestTimeout time.Duration) *JobController {
-	return &JobController{service: svc, requestTimeout: requestTimeout}
+func NewJobController(svc *service.JobService, resumeQueueSvc *service.ResumeQueueService, broker *JobEventBroker, requestTimeout time.Duration) *JobController {
+	return &JobController{service: svc, resumeQueueSvc: resumeQueueSvc, broker: broker, requestTimeout: requestTimeout}
 }
 
 func (c *JobController) CreateJob(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +43,63 @@ func (c *JobController) CreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if c.broker != nil {
+		c.broker.Publish(jobCreatedEvent{Job: mapJob(job)})
+	}
+
 	writeJSON(w, http.StatusCreated, mapJob(job))
+}
+
+type jobCreatedEvent struct {
+	Job dto.JobResponse `json:"job"`
+}
+
+func (c *JobController) StreamCreatedJobs(w http.ResponseWriter, r *http.Request) {
+	if c.broker == nil {
+		writeError(w, http.StatusInternalServerError, globals.CodeInternal, "job event stream unavailable")
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, globals.CodeInternal, "streaming unsupported")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	events, unsubscribe := c.broker.Subscribe()
+	defer unsubscribe()
+
+	_, _ = w.Write([]byte(": connected\n\n"))
+	flusher.Flush()
+
+	ticker := time.NewTicker(25 * time.Second)
+	defer ticker.Stop()
+
+	ctx := r.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			_, _ = w.Write([]byte(": ping\n\n"))
+			flusher.Flush()
+		case payload := <-events:
+			raw, err := json.Marshal(payload)
+			if err != nil {
+				continue
+			}
+
+			if _, err := fmt.Fprintf(w, "event: job_created\ndata: %s\n\n", raw); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
 }
 
 func (c *JobController) GetJob(w http.ResponseWriter, r *http.Request) {
@@ -175,12 +234,108 @@ func (c *JobController) ExistsByApplyLink(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, dto.ExistsApplyLinkResponse{Exists: exists})
 }
 
+func (c *JobController) TriggerResumeGenerate(w http.ResponseWriter, r *http.Request) {
+	if c.resumeQueueSvc == nil {
+		writeError(w, http.StatusInternalServerError, globals.CodeInternal, "resume queue service unavailable")
+		return
+	}
+
+	ctx, cancel := service.WithTimeout(r.Context(), c.requestTimeout)
+	defer cancel()
+
+	id := chi.URLParam(r, "id")
+	status, err := c.resumeQueueSvc.EnqueueJob(ctx, id)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, dto.ResumeGenerateTriggerResponse{
+		Status:  status,
+		Message: "resume generation queued",
+	})
+}
+
+func (c *JobController) ListResumeQueue(w http.ResponseWriter, r *http.Request) {
+	if c.resumeQueueSvc == nil {
+		writeError(w, http.StatusInternalServerError, globals.CodeInternal, "resume queue service unavailable")
+		return
+	}
+
+	ctx, cancel := service.WithTimeout(r.Context(), c.requestTimeout)
+	defer cancel()
+
+	status := r.URL.Query().Get("status")
+	limit := parseIntQuery(r, "limit", 100)
+
+	items, err := c.resumeQueueSvc.ListByStatus(ctx, status, limit)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	response := make([]dto.ResumeQueueItemResponse, 0, len(items))
+	for i := range items {
+		item := items[i]
+		response = append(response, dto.ResumeQueueItemResponse{
+			JobID:     item.JobID.String(),
+			ApplyLink: item.ApplyLink,
+			Status:    item.Status,
+			CreatedAt: item.CreatedAt,
+			UpdatedAt: item.UpdatedAt,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, dto.ResumeQueueListResponse{Data: response})
+}
+
+func (c *JobController) UpdateResumeLink(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := service.WithTimeout(r.Context(), c.requestTimeout)
+	defer cancel()
+
+	id := chi.URLParam(r, "id")
+
+	var req dto.UpdateResumeLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, globals.CodeBadRequest, "invalid request payload")
+		return
+	}
+
+	resumeLink := req.ResumeLink
+	job, err := c.service.Update(ctx, id, dto.UpdateJobRequest{ResumeLink: &resumeLink})
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, mapJob(job))
+}
+
+func (c *JobController) DeleteResumeQueueItem(w http.ResponseWriter, r *http.Request) {
+	if c.resumeQueueSvc == nil {
+		writeError(w, http.StatusInternalServerError, globals.CodeInternal, "resume queue service unavailable")
+		return
+	}
+
+	ctx, cancel := service.WithTimeout(r.Context(), c.requestTimeout)
+	defer cancel()
+
+	jobID := chi.URLParam(r, "job_id")
+	if err := c.resumeQueueSvc.DeleteByJobID(ctx, jobID); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func mapJob(job *dao.Job) dto.JobResponse {
 	return dto.JobResponse{
 		ID:             job.ID.String(),
 		CompanyName:    job.CompanyName,
 		RoleTitle:      job.RoleTitle,
 		Location:       job.Location,
+		JobDescription: job.JobDescription,
 		ApplyLink:      job.ApplyLink,
 		LinkedInJobURL: job.LinkedInJobURL,
 		ResumeLink:     job.ResumeLink,

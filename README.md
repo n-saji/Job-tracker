@@ -29,6 +29,7 @@ Layered Go backend for tracking job applications.
 ## APIs
 
 - `POST /jobs`
+- `GET /jobs/events` (SSE stream for `job_created`)
 - `GET /jobs`
 - `GET /jobs/{id}`
 - `PUT /jobs/{id}`

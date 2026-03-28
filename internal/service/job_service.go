@@ -38,6 +38,7 @@ func (s *JobService) Create(ctx context.Context, req dto.CreateJobRequest) (*dao
 		CompanyName:    strings.TrimSpace(req.CompanyName),
 		RoleTitle:      strings.TrimSpace(req.RoleTitle),
 		Location:       strings.TrimSpace(req.Location),
+		JobDescription: strings.TrimSpace(req.JobDescription),
 		ApplyLink:      normalizedApplyLink,
 		LinkedInJobURL: strings.TrimSpace(req.LinkedInJobURL),
 		ResumeLink:     strings.TrimSpace(req.ResumeLink),
@@ -105,13 +106,13 @@ func (s *JobService) List(ctx context.Context, page, limit int, status, discardR
 	}
 
 	jobs, total, err := s.dao.List(ctx, dao.ListJobsParams{
-		Page:          page,
-		Limit:         limit,
-		Status:        status,
-		DiscardReason: discardReason,
+		Page:             page,
+		Limit:            limit,
+		Status:           status,
+		DiscardReason:    discardReason,
 		IncludeDiscarded: includeDiscarded,
-		Company:       strings.TrimSpace(company),
-		Location:      strings.TrimSpace(location),
+		Company:          strings.TrimSpace(company),
+		Location:         strings.TrimSpace(location),
 	})
 	if err != nil {
 		return nil, 0, 0, 0, err
@@ -334,6 +335,11 @@ func validateAndBuildUpdate(req dto.UpdateJobRequest, current *dao.Job) (dao.Upd
 			return params, fmt.Errorf("apply_link cannot be empty: %w", globals.ErrBadRequest)
 		}
 		params.ApplyLink = &value
+	}
+	if req.JobDescription != nil {
+		provided = true
+		value := strings.TrimSpace(*req.JobDescription)
+		params.JobDescription = &value
 	}
 	if req.LinkedInJobURL != nil {
 		provided = true

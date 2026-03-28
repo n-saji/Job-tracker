@@ -18,6 +18,7 @@ type Job struct {
 	CompanyName    string
 	RoleTitle      string
 	Location       string
+	JobDescription string
 	ApplyLink      string
 	LinkedInJobURL string
 	ResumeLink     string
@@ -35,6 +36,7 @@ type CreateJobParams struct {
 	CompanyName    string
 	RoleTitle      string
 	Location       string
+	JobDescription string
 	ApplyLink      string
 	LinkedInJobURL string
 	ResumeLink     string
@@ -49,6 +51,7 @@ type UpdateJobParams struct {
 	CompanyName        *string
 	RoleTitle          *string
 	Location           *string
+	JobDescription     *string
 	ApplyLink          *string
 	LinkedInJobURL     *string
 	ResumeLink         *string
@@ -61,13 +64,13 @@ type UpdateJobParams struct {
 }
 
 type ListJobsParams struct {
-	Page          int
-	Limit         int
-	Status        string
-	DiscardReason string
+	Page             int
+	Limit            int
+	Status           string
+	DiscardReason    string
 	IncludeDiscarded bool
-	Company       string
-	Location      string
+	Company          string
+	Location         string
 }
 
 type JobDAO interface {
@@ -92,11 +95,11 @@ func NewPgxJobDAO(pool *pgxpool.Pool) *PgxJobDAO {
 func (d *PgxJobDAO) Create(ctx context.Context, params CreateJobParams) (*Job, error) {
 	query := `
 		INSERT INTO jobs (
-company_name, role_title, location, apply_link, linkedin_job_url,
+company_name, role_title, location, job_description, apply_link, linkedin_job_url,
 resume_link, status, discard_reason, salary_text, is_easy_apply, applied_at
 )
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-		RETURNING id, company_name, role_title, location, apply_link, linkedin_job_url,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		RETURNING id, company_name, role_title, location, job_description, apply_link, linkedin_job_url,
 			resume_link, status, discard_reason, salary_text, is_easy_apply, applied_at, created_at, updated_at, deleted_at
 	`
 
@@ -104,6 +107,7 @@ resume_link, status, discard_reason, salary_text, is_easy_apply, applied_at
 		params.CompanyName,
 		params.RoleTitle,
 		params.Location,
+		params.JobDescription,
 		params.ApplyLink,
 		params.LinkedInJobURL,
 		params.ResumeLink,
@@ -125,7 +129,7 @@ resume_link, status, discard_reason, salary_text, is_easy_apply, applied_at
 
 func (d *PgxJobDAO) GetByID(ctx context.Context, id uuid.UUID) (*Job, error) {
 	query := `
-		SELECT id, company_name, role_title, location, apply_link, linkedin_job_url,
+		SELECT id, company_name, role_title, location, job_description, apply_link, linkedin_job_url,
 			resume_link, status, discard_reason, salary_text, is_easy_apply, applied_at, created_at, updated_at, deleted_at
 		FROM jobs
 		WHERE id = $1 AND deleted_at IS NULL
@@ -177,7 +181,7 @@ func (d *PgxJobDAO) List(ctx context.Context, params ListJobsParams) ([]Job, int
 	}
 
 	offset := (params.Page - 1) * params.Limit
-	listQuery := "\n\t\tSELECT id, company_name, role_title, location, apply_link, linkedin_job_url,\n\t\t\tresume_link, status, discard_reason, salary_text, is_easy_apply, applied_at, created_at, updated_at, deleted_at\n\t\tFROM jobs " + baseWhere +
+	listQuery := "\n\t\tSELECT id, company_name, role_title, location, job_description, apply_link, linkedin_job_url,\n\t\t\tresume_link, status, discard_reason, salary_text, is_easy_apply, applied_at, created_at, updated_at, deleted_at\n\t\tFROM jobs " + baseWhere +
 		fmt.Sprintf(" ORDER BY updated_at DESC LIMIT $%d OFFSET $%d", argPos, argPos+1)
 
 	listArgs := append(args, params.Limit, offset)
@@ -221,6 +225,11 @@ func (d *PgxJobDAO) Update(ctx context.Context, id uuid.UUID, params UpdateJobPa
 	if params.Location != nil {
 		setClauses = append(setClauses, fmt.Sprintf("location = $%d", argPos))
 		args = append(args, *params.Location)
+		argPos++
+	}
+	if params.JobDescription != nil {
+		setClauses = append(setClauses, fmt.Sprintf("job_description = $%d", argPos))
+		args = append(args, *params.JobDescription)
 		argPos++
 	}
 	if params.ApplyLink != nil {
@@ -275,7 +284,7 @@ func (d *PgxJobDAO) Update(ctx context.Context, id uuid.UUID, params UpdateJobPa
 		UPDATE jobs
 		SET %s
 		WHERE id = $%d AND deleted_at IS NULL
-		RETURNING id, company_name, role_title, location, apply_link, linkedin_job_url,
+		RETURNING id, company_name, role_title, location, job_description, apply_link, linkedin_job_url,
 			resume_link, status, discard_reason, salary_text, is_easy_apply, applied_at, created_at, updated_at, deleted_at
 	`, strings.Join(setClauses, ", "), argPos)
 
@@ -371,6 +380,7 @@ func scanJob(row rowScanner) (*Job, error) {
 		&job.CompanyName,
 		&job.RoleTitle,
 		&job.Location,
+		&job.JobDescription,
 		&job.ApplyLink,
 		&job.LinkedInJobURL,
 		&job.ResumeLink,

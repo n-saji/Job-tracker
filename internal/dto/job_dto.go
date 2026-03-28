@@ -6,6 +6,7 @@ type CreateJobRequest struct {
 	CompanyName    string    `json:"company_name"`
 	RoleTitle      string    `json:"role_title"`
 	Location       string    `json:"location"`
+	JobDescription string    `json:"job_description"`
 	ApplyLink      string    `json:"apply_link"`
 	LinkedInJobURL string    `json:"linkedin_job_url"`
 	ResumeLink     string    `json:"resume_link"`
@@ -20,6 +21,7 @@ type UpdateJobRequest struct {
 	CompanyName    *string    `json:"company_name"`
 	RoleTitle      *string    `json:"role_title"`
 	Location       *string    `json:"location"`
+	JobDescription *string    `json:"job_description"`
 	ApplyLink      *string    `json:"apply_link"`
 	LinkedInJobURL *string    `json:"linkedin_job_url"`
 	ResumeLink     *string    `json:"resume_link"`
@@ -45,6 +47,7 @@ type JobResponse struct {
 	CompanyName    string     `json:"company_name"`
 	RoleTitle      string     `json:"role_title"`
 	Location       string     `json:"location"`
+	JobDescription string     `json:"job_description"`
 	ApplyLink      string     `json:"apply_link"`
 	LinkedInJobURL string     `json:"linkedin_job_url"`
 	ResumeLink     string     `json:"resume_link"`
@@ -75,4 +78,25 @@ type BulkDeleteJobsResponse struct {
 
 type BulkUpdateJobsStatusResponse struct {
 	UpdatedCount int `json:"updated_count"`
+}
+
+type ResumeGenerateTriggerResponse struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
+type ResumeQueueItemResponse struct {
+	JobID     string    `json:"job_id"`
+	ApplyLink string    `json:"apply_link"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type ResumeQueueListResponse struct {
+	Data []ResumeQueueItemResponse `json:"data"`
+}
+
+type UpdateResumeLinkRequest struct {
+	ResumeLink string `json:"resume_link"`
 }
