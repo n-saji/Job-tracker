@@ -18,7 +18,7 @@ type Config struct {
 }
 
 func Load() (Config, error) {
-	err := godotenv.Load("../../.env") // Load .env file if it exists
+	err := godotenv.Load(".env") // Load .env file if it exists
 	if err != nil {
 		return Config{}, fmt.Errorf("failed to load .env file: %w", err)
 	}

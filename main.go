@@ -81,7 +81,7 @@ func runMigrations(databaseURL string) error {
 		return fmt.Errorf("ping sql db for migrations: %w", err)
 	}
 
-	migrationDir, err := filepath.Abs("../../migrations")
+	migrationDir, err := filepath.Abs("./migrations")
 	if err != nil {
 		return fmt.Errorf("resolve migrations dir: %w", err)
 	}
