@@ -46,6 +46,7 @@ func (s *JobService) Create(ctx context.Context, req dto.CreateJobRequest) (*dao
 		DiscardReason:  normalizeOptionalDiscardReason(req.DiscardReason),
 		SalaryText:     strings.TrimSpace(req.SalaryText),
 		IsEasyApply:    bool(strings.EqualFold(req.IsEasyApply, "true")),
+		MatchRating:    req.MatchRating,
 		AppliedAt:      req.AppliedAt,
 	})
 	if err != nil {
@@ -74,7 +75,7 @@ func (s *JobService) GetByID(ctx context.Context, id string) (*dao.Job, error) {
 	return job, nil
 }
 
-func (s *JobService) List(ctx context.Context, page, limit int, status, discardReason string, includeDiscarded bool, company, location string) ([]dao.Job, int64, int, int, error) {
+func (s *JobService) List(ctx context.Context, page, limit int, status, discardReason string, includeDiscarded bool, company, location string, minMatchRating, maxMatchRating *float64, sortMatch string) ([]dao.Job, int64, int, int, error) {
 	if page <= 0 {
 		page = globals.DefaultPage
 	}
@@ -105,6 +106,25 @@ func (s *JobService) List(ctx context.Context, page, limit int, status, discardR
 		}
 	}
 
+	if minMatchRating != nil {
+		if *minMatchRating < 0 || *minMatchRating > 10 {
+			return nil, 0, 0, 0, fmt.Errorf("min_match_rating must be between 0 and 10: %w", globals.ErrBadRequest)
+		}
+	}
+	if maxMatchRating != nil {
+		if *maxMatchRating < 0 || *maxMatchRating > 10 {
+			return nil, 0, 0, 0, fmt.Errorf("max_match_rating must be between 0 and 10: %w", globals.ErrBadRequest)
+		}
+	}
+	if minMatchRating != nil && maxMatchRating != nil && *minMatchRating > *maxMatchRating {
+		return nil, 0, 0, 0, fmt.Errorf("min_match_rating cannot be greater than max_match_rating: %w", globals.ErrBadRequest)
+	}
+
+	sortMatch = strings.ToLower(strings.TrimSpace(sortMatch))
+	if sortMatch != "" && sortMatch != "asc" && sortMatch != "desc" {
+		return nil, 0, 0, 0, fmt.Errorf("invalid sort_match: %w", globals.ErrBadRequest)
+	}
+
 	jobs, total, err := s.dao.List(ctx, dao.ListJobsParams{
 		Page:             page,
 		Limit:            limit,
@@ -113,6 +133,9 @@ func (s *JobService) List(ctx context.Context, page, limit int, status, discardR
 		IncludeDiscarded: includeDiscarded,
 		Company:          strings.TrimSpace(company),
 		Location:         strings.TrimSpace(location),
+		MinMatchRating:   minMatchRating,
+		MaxMatchRating:   maxMatchRating,
+		SortMatch:        sortMatch,
 	})
 	if err != nil {
 		return nil, 0, 0, 0, err
@@ -296,6 +319,12 @@ func validateCreate(req dto.CreateJobRequest) error {
 	if req.AppliedAt.IsZero() {
 		req.AppliedAt = time.Now()
 	}
+
+	if req.MatchRating != nil {
+		if *req.MatchRating < 0 || *req.MatchRating > 10 {
+			return fmt.Errorf("match_rating must be between 0 and 10: %w", globals.ErrBadRequest)
+		}
+	}
 	return nil
 }
 
@@ -380,6 +409,18 @@ func validateAndBuildUpdate(req dto.UpdateJobRequest, current *dao.Job) (dao.Upd
 	if req.IsEasyApply != nil {
 		provided = true
 		params.IsEasyApply = req.IsEasyApply
+	}
+	if req.MatchRating.Set {
+		provided = true
+		if req.MatchRating.Value == nil {
+			params.ClearMatchRating = true
+		} else {
+			value := *req.MatchRating.Value
+			if value < 0 || value > 10 {
+				return params, fmt.Errorf("match_rating must be between 0 and 10: %w", globals.ErrBadRequest)
+			}
+			params.MatchRating = &value
+		}
 	}
 	if req.AppliedAt != nil {
 		provided = true

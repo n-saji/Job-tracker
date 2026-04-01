@@ -26,6 +26,7 @@ type Job struct {
 	DiscardReason  *string
 	SalaryText     string
 	IsEasyApply    bool
+	MatchRating    *float64
 	AppliedAt      time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
@@ -44,6 +45,7 @@ type CreateJobParams struct {
 	DiscardReason  *string
 	SalaryText     string
 	IsEasyApply    bool
+	MatchRating    *float64
 	AppliedAt      time.Time
 }
 
@@ -60,6 +62,8 @@ type UpdateJobParams struct {
 	ClearDiscardReason bool
 	SalaryText         *string
 	IsEasyApply        *bool
+	MatchRating        *float64
+	ClearMatchRating   bool
 	AppliedAt          *time.Time
 }
 
@@ -71,6 +75,9 @@ type ListJobsParams struct {
 	IncludeDiscarded bool
 	Company          string
 	Location         string
+	MinMatchRating   *float64
+	MaxMatchRating   *float64
+	SortMatch        string
 }
 
 type JobDAO interface {
@@ -96,11 +103,11 @@ func (d *PgxJobDAO) Create(ctx context.Context, params CreateJobParams) (*Job, e
 	query := `
 		INSERT INTO jobs (
 company_name, role_title, location, job_description, apply_link, linkedin_job_url,
-resume_link, status, discard_reason, salary_text, is_easy_apply, applied_at
+resume_link, status, discard_reason, salary_text, is_easy_apply, match_rating, applied_at
 )
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 		RETURNING id, company_name, role_title, location, job_description, apply_link, linkedin_job_url,
-			resume_link, status, discard_reason, salary_text, is_easy_apply, applied_at, created_at, updated_at, deleted_at
+			resume_link, status, discard_reason, salary_text, is_easy_apply, match_rating, applied_at, created_at, updated_at, deleted_at
 	`
 
 	job, err := scanJob(d.pool.QueryRow(ctx, query,
@@ -115,6 +122,7 @@ resume_link, status, discard_reason, salary_text, is_easy_apply, applied_at
 		params.DiscardReason,
 		params.SalaryText,
 		params.IsEasyApply,
+		params.MatchRating,
 		params.AppliedAt,
 	))
 	if err != nil {
@@ -130,7 +138,7 @@ resume_link, status, discard_reason, salary_text, is_easy_apply, applied_at
 func (d *PgxJobDAO) GetByID(ctx context.Context, id uuid.UUID) (*Job, error) {
 	query := `
 		SELECT id, company_name, role_title, location, job_description, apply_link, linkedin_job_url,
-			resume_link, status, discard_reason, salary_text, is_easy_apply, applied_at, created_at, updated_at, deleted_at
+			resume_link, status, discard_reason, salary_text, is_easy_apply, match_rating, applied_at, created_at, updated_at, deleted_at
 		FROM jobs
 		WHERE id = $1 AND deleted_at IS NULL
 	`
@@ -173,6 +181,16 @@ func (d *PgxJobDAO) List(ctx context.Context, params ListJobsParams) ([]Job, int
 		args = append(args, "%"+params.Location+"%")
 		argPos++
 	}
+	if params.MinMatchRating != nil {
+		baseWhere += fmt.Sprintf(" AND match_rating IS NOT NULL AND match_rating >= $%d", argPos)
+		args = append(args, *params.MinMatchRating)
+		argPos++
+	}
+	if params.MaxMatchRating != nil {
+		baseWhere += fmt.Sprintf(" AND match_rating IS NOT NULL AND match_rating <= $%d", argPos)
+		args = append(args, *params.MaxMatchRating)
+		argPos++
+	}
 
 	countQuery := "SELECT COUNT(1) FROM jobs " + baseWhere
 	var total int64
@@ -181,8 +199,14 @@ func (d *PgxJobDAO) List(ctx context.Context, params ListJobsParams) ([]Job, int
 	}
 
 	offset := (params.Page - 1) * params.Limit
-	listQuery := "\n\t\tSELECT id, company_name, role_title, location, job_description, apply_link, linkedin_job_url,\n\t\t\tresume_link, status, discard_reason, salary_text, is_easy_apply, applied_at, created_at, updated_at, deleted_at\n\t\tFROM jobs " + baseWhere +
-		fmt.Sprintf(" ORDER BY updated_at DESC LIMIT $%d OFFSET $%d", argPos, argPos+1)
+	orderBy := "updated_at DESC"
+	if params.SortMatch == "asc" {
+		orderBy = "match_rating IS NULL, match_rating ASC, updated_at DESC"
+	} else if params.SortMatch == "desc" {
+		orderBy = "match_rating IS NULL, match_rating DESC, updated_at DESC"
+	}
+	listQuery := "\n\t\tSELECT id, company_name, role_title, location, job_description, apply_link, linkedin_job_url,\n\t\t\tresume_link, status, discard_reason, salary_text, is_easy_apply, match_rating, applied_at, created_at, updated_at, deleted_at\n\t\tFROM jobs " + baseWhere +
+		fmt.Sprintf(" ORDER BY %s LIMIT $%d OFFSET $%d", orderBy, argPos, argPos+1)
 
 	listArgs := append(args, params.Limit, offset)
 	rows, err := d.pool.Query(ctx, listQuery, listArgs...)
@@ -269,6 +293,13 @@ func (d *PgxJobDAO) Update(ctx context.Context, id uuid.UUID, params UpdateJobPa
 		args = append(args, *params.IsEasyApply)
 		argPos++
 	}
+	if params.MatchRating != nil {
+		setClauses = append(setClauses, fmt.Sprintf("match_rating = $%d", argPos))
+		args = append(args, *params.MatchRating)
+		argPos++
+	} else if params.ClearMatchRating {
+		setClauses = append(setClauses, "match_rating = NULL")
+	}
 	if params.AppliedAt != nil {
 		setClauses = append(setClauses, fmt.Sprintf("applied_at = $%d", argPos))
 		args = append(args, *params.AppliedAt)
@@ -285,7 +316,7 @@ func (d *PgxJobDAO) Update(ctx context.Context, id uuid.UUID, params UpdateJobPa
 		SET %s
 		WHERE id = $%d AND deleted_at IS NULL
 		RETURNING id, company_name, role_title, location, job_description, apply_link, linkedin_job_url,
-			resume_link, status, discard_reason, salary_text, is_easy_apply, applied_at, created_at, updated_at, deleted_at
+			resume_link, status, discard_reason, salary_text, is_easy_apply, match_rating, applied_at, created_at, updated_at, deleted_at
 	`, strings.Join(setClauses, ", "), argPos)
 
 	args = append(args, id)
@@ -388,6 +419,7 @@ func scanJob(row rowScanner) (*Job, error) {
 		&job.DiscardReason,
 		&job.SalaryText,
 		&job.IsEasyApply,
+		&job.MatchRating,
 		&job.AppliedAt,
 		&job.CreatedAt,
 		&job.UpdatedAt,

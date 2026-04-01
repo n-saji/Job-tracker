@@ -127,8 +127,31 @@ func (c *JobController) ListJobs(w http.ResponseWriter, r *http.Request) {
 	includeDiscarded := parseBoolQuery(r, "include_discarded", false)
 	company := r.URL.Query().Get("company")
 	location := r.URL.Query().Get("location")
+	minMatchRating, err := parseOptionalFloatQuery(r, "min_match_rating")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, globals.CodeBadRequest, "min_match_rating must be a valid number")
+		return
+	}
+	maxMatchRating, err := parseOptionalFloatQuery(r, "max_match_rating")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, globals.CodeBadRequest, "max_match_rating must be a valid number")
+		return
+	}
+	sortMatch := r.URL.Query().Get("sort_match")
 
-	jobs, total, normalizedPage, normalizedLimit, err := c.service.List(ctx, page, limit, status, discardReason, includeDiscarded, company, location)
+	jobs, total, normalizedPage, normalizedLimit, err := c.service.List(
+		ctx,
+		page,
+		limit,
+		status,
+		discardReason,
+		includeDiscarded,
+		company,
+		location,
+		minMatchRating,
+		maxMatchRating,
+		sortMatch,
+	)
 	if err != nil {
 		writeServiceError(w, err)
 		return
@@ -343,6 +366,7 @@ func mapJob(job *dao.Job) dto.JobResponse {
 		DiscardReason:  job.DiscardReason,
 		SalaryText:     job.SalaryText,
 		IsEasyApply:    job.IsEasyApply,
+		MatchRating:    job.MatchRating,
 		AppliedAt:      job.AppliedAt,
 		CreatedAt:      job.CreatedAt,
 		UpdatedAt:      job.UpdatedAt,
@@ -376,6 +400,20 @@ func parseBoolQuery(r *http.Request, key string, fallback bool) bool {
 	}
 
 	return parsed
+}
+
+func parseOptionalFloatQuery(r *http.Request, key string) (*float64, error) {
+	value := r.URL.Query().Get(key)
+	if value == "" {
+		return nil, nil
+	}
+
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return nil, err
+	}
+
+	return &parsed, nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
