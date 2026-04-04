@@ -248,6 +248,10 @@ func (c *JobController) ExistsByApplyLink(w http.ResponseWriter, r *http.Request
 	defer cancel()
 
 	applyLink := r.URL.Query().Get("apply_link")
+	if applyLink == "" {
+		writeJSON(w, http.StatusOK, dto.ExistsApplyLinkResponse{Exists: false})
+		return
+	}
 	exists, err := c.service.ExistsByApplyLink(ctx, applyLink)
 	if err != nil {
 		writeServiceError(w, err)
