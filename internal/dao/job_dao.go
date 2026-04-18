@@ -80,10 +80,23 @@ type ListJobsParams struct {
 	SortMatch        string
 }
 
+type ResumeItem struct {
+	JobID       uuid.UUID
+	CompanyName string
+	RoleTitle   string
+	Status      string
+	ResumeLink  string
+	AppliedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type JobDAO interface {
 	Create(ctx context.Context, params CreateJobParams) (*Job, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*Job, error)
 	List(ctx context.Context, params ListJobsParams) ([]Job, int64, error)
+	ListResumes(ctx context.Context, page, limit int) ([]ResumeItem, int64, error)
+	CountAppliedBetween(ctx context.Context, start time.Time, end time.Time) (int, error)
+	GetApplyStatsBase(ctx context.Context) (int, *time.Time, error)
 	Update(ctx context.Context, id uuid.UUID, params UpdateJobParams) (*Job, error)
 	SoftDelete(ctx context.Context, id uuid.UUID) error
 	SoftDeleteMany(ctx context.Context, ids []uuid.UUID) (int64, error)
@@ -334,6 +347,53 @@ func (d *PgxJobDAO) Update(ctx context.Context, id uuid.UUID, params UpdateJobPa
 	return job, nil
 }
 
+func (d *PgxJobDAO) ListResumes(ctx context.Context, page, limit int) ([]ResumeItem, int64, error) {
+	const baseWhere = "WHERE deleted_at IS NULL AND COALESCE(TRIM(resume_link), '') <> ''"
+
+	var total int64
+	if err := d.pool.QueryRow(ctx, "SELECT COUNT(1) FROM jobs "+baseWhere).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * limit
+	query := `
+		SELECT id, company_name, role_title, status, resume_link, applied_at, updated_at
+		FROM jobs
+		` + baseWhere + `
+		ORDER BY applied_at DESC, updated_at DESC
+		LIMIT $1 OFFSET $2
+	`
+
+	rows, err := d.pool.Query(ctx, query, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	items := make([]ResumeItem, 0, limit)
+	for rows.Next() {
+		var item ResumeItem
+		if err := rows.Scan(
+			&item.JobID,
+			&item.CompanyName,
+			&item.RoleTitle,
+			&item.Status,
+			&item.ResumeLink,
+			&item.AppliedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, 0, err
+		}
+		items = append(items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	return items, total, nil
+}
+
 func (d *PgxJobDAO) SoftDelete(ctx context.Context, id uuid.UUID) error {
 	commandTag, err := d.pool.Exec(ctx, `
 		UPDATE jobs
@@ -398,6 +458,44 @@ WHERE apply_link = $1 AND deleted_at IS NULL
 	}
 
 	return exists, nil
+}
+
+func (d *PgxJobDAO) CountAppliedBetween(ctx context.Context, start time.Time, end time.Time) (int, error) {
+	const query = `
+		SELECT COUNT(1)
+		FROM jobs
+		WHERE deleted_at IS NULL
+			AND status <> 'added'
+			AND status <> 'discarded'
+			AND applied_at >= $1
+			AND applied_at < $2
+	`
+
+	var count int
+	if err := d.pool.QueryRow(ctx, query, start, end).Scan(&count); err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+func (d *PgxJobDAO) GetApplyStatsBase(ctx context.Context) (int, *time.Time, error) {
+	const query = `
+		SELECT COUNT(1), MIN(created_at)
+		FROM jobs
+		WHERE deleted_at IS NULL
+			AND status <> 'added'
+			AND status <> 'discarded'
+			AND status <> 'withdrawn'
+	`
+
+	var count int
+	var firstAppliedAt *time.Time
+	if err := d.pool.QueryRow(ctx, query).Scan(&count, &firstAppliedAt); err != nil {
+		return 0, nil, err
+	}
+	fmt.Println(firstAppliedAt)
+	return count, firstAppliedAt, nil
 }
 
 type rowScanner interface {

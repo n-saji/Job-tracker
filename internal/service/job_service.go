@@ -144,6 +144,25 @@ func (s *JobService) List(ctx context.Context, page, limit int, status, discardR
 	return jobs, total, page, limit, nil
 }
 
+func (s *JobService) ListResumes(ctx context.Context, page, limit int) ([]dao.ResumeItem, int64, int, int, error) {
+	if page <= 0 {
+		page = globals.DefaultPage
+	}
+	if limit <= 0 {
+		limit = globals.DefaultLimit
+	}
+	if limit > globals.MaxLimit {
+		limit = globals.MaxLimit
+	}
+
+	items, total, err := s.dao.ListResumes(ctx, page, limit)
+	if err != nil {
+		return nil, 0, 0, 0, err
+	}
+
+	return items, total, page, limit, nil
+}
+
 func (s *JobService) Update(ctx context.Context, id string, req dto.UpdateJobRequest) (*dao.Job, error) {
 	parsedID, err := uuid.Parse(id)
 	if err != nil {
@@ -284,6 +303,72 @@ func (s *JobService) ExistsByApplyLink(ctx context.Context, applyLink string) (b
 		return false, fmt.Errorf("apply_link is required: %w", globals.ErrBadRequest)
 	}
 	return s.dao.ExistsByApplyLink(ctx, normalized)
+}
+
+func (s *JobService) GetApplyRateStats(ctx context.Context) (dto.ApplyRateStatsResponse, error) {
+	totalApplied, firstAppliedAt, err := s.dao.GetApplyStatsBase(ctx)
+	if err != nil {
+		return dto.ApplyRateStatsResponse{}, err
+	}
+
+	now := time.Now().UTC()
+	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	startOfWeek := startOfToday.AddDate(0, 0, -6)
+	startOfMonth := startOfToday.AddDate(0, 0, -29)
+
+	dailyCount, err := s.dao.CountAppliedBetween(ctx, startOfToday, now)
+	if err != nil {
+		return dto.ApplyRateStatsResponse{}, err
+	}
+
+	weeklyCount, err := s.dao.CountAppliedBetween(ctx, startOfWeek, now)
+	if err != nil {
+		return dto.ApplyRateStatsResponse{}, err
+	}
+
+	monthlyCount, err := s.dao.CountAppliedBetween(ctx, startOfMonth, now)
+	if err != nil {
+		return dto.ApplyRateStatsResponse{}, err
+	}
+
+	if totalApplied == 0 || firstAppliedAt == nil {
+		return dto.ApplyRateStatsResponse{
+			DailyCount:   dailyCount,
+			WeeklyCount:  weeklyCount,
+			MonthlyCount: monthlyCount,
+		}, nil
+	}
+
+	first := firstAppliedAt.UTC()
+
+	firstDay := time.Date(first.Year(), first.Month(), first.Day(), 0, 0, 0, 0, time.UTC)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+
+	elapsedDays := int(today.Sub(firstDay).Hours()/24) + 1
+	if elapsedDays < 1 {
+		elapsedDays = 1
+	}
+
+	elapsedWeeks := ((elapsedDays - 1) / 7) + 1
+	if elapsedWeeks < 1 {
+		elapsedWeeks = 1
+	}
+
+	elapsedMonths := (today.Year()-firstDay.Year())*12 + int(today.Month()-firstDay.Month()) + 1
+	if elapsedMonths < 1 {
+		elapsedMonths = 1
+	}
+
+	total := float64(totalApplied)
+
+	return dto.ApplyRateStatsResponse{
+		DailyCount:     dailyCount,
+		WeeklyCount:    weeklyCount,
+		MonthlyCount:   monthlyCount,
+		DailyAverage:   total / float64(elapsedDays),
+		WeeklyAverage:  total / float64(elapsedWeeks),
+		MonthlyAverage: total / float64(elapsedMonths),
+	}, nil
 }
 
 func validateCreate(req dto.CreateJobRequest) error {

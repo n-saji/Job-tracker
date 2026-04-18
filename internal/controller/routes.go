@@ -54,6 +54,7 @@ func NewRouter(jobService *service.JobService, resumeQueueService *service.Resum
 			r.Post("/bulk-update-status", jobController.BulkUpdateJobsStatus)
 			r.Post("/{id}/resume-generate", jobController.TriggerResumeGenerate)
 			r.Get("/", jobController.ListJobs)
+			r.Get("/apply-rate", jobController.GetApplyRateStats)
 			r.Get("/exists", jobController.ExistsByApplyLink)
 			r.Get("/{id}", jobController.GetJob)
 			r.Put("/{id}", jobController.UpdateJob)
@@ -66,6 +67,11 @@ func NewRouter(jobService *service.JobService, resumeQueueService *service.Resum
 		r.Use(middleware.Timeout(requestTimeout))
 		r.Get("/", jobController.ListResumeQueue)
 		r.Delete("/{job_id}", jobController.DeleteResumeQueueItem)
+	})
+
+	r.Route("/resumes", func(r chi.Router) {
+		r.Use(middleware.Timeout(requestTimeout))
+		r.Get("/", jobController.ListResumes)
 	})
 
 	return r

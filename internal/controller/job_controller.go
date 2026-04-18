@@ -171,6 +171,19 @@ func (c *JobController) ListJobs(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (c *JobController) GetApplyRateStats(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := service.WithTimeout(r.Context(), c.requestTimeout)
+	defer cancel()
+
+	stats, err := c.service.GetApplyRateStats(ctx)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, stats)
+}
+
 func (c *JobController) UpdateJob(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := service.WithTimeout(r.Context(), c.requestTimeout)
 	defer cancel()
@@ -314,6 +327,41 @@ func (c *JobController) ListResumeQueue(w http.ResponseWriter, r *http.Request) 
 	}
 
 	writeJSON(w, http.StatusOK, dto.ResumeQueueListResponse{Data: response})
+}
+
+func (c *JobController) ListResumes(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := service.WithTimeout(r.Context(), c.requestTimeout)
+	defer cancel()
+
+	page := parseIntQuery(r, "page", globals.DefaultPage)
+	limit := parseIntQuery(r, "limit", globals.DefaultLimit)
+
+	items, total, normalizedPage, normalizedLimit, err := c.service.ListResumes(ctx, page, limit)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	response := make([]dto.ResumeItemResponse, 0, len(items))
+	for i := range items {
+		item := items[i]
+		response = append(response, dto.ResumeItemResponse{
+			JobID:       item.JobID.String(),
+			CompanyName: item.CompanyName,
+			RoleTitle:   item.RoleTitle,
+			Status:      item.Status,
+			ResumeLink:  item.ResumeLink,
+			AppliedAt:   item.AppliedAt,
+			UpdatedAt:   item.UpdatedAt,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, dto.ListResumesResponse{
+		Data:  response,
+		Page:  normalizedPage,
+		Limit: normalizedLimit,
+		Total: total,
+	})
 }
 
 func (c *JobController) UpdateResumeLink(w http.ResponseWriter, r *http.Request) {

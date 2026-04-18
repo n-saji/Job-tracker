@@ -108,6 +108,15 @@ type BulkUpdateJobsStatusResponse struct {
 	UpdatedCount int `json:"updated_count"`
 }
 
+type ApplyRateStatsResponse struct {
+	DailyCount     int     `json:"daily_count"`
+	WeeklyCount    int     `json:"weekly_count"`
+	MonthlyCount   int     `json:"monthly_count"`
+	DailyAverage   float64 `json:"daily_average"`
+	WeeklyAverage  float64 `json:"weekly_average"`
+	MonthlyAverage float64 `json:"monthly_average"`
+}
+
 type ResumeGenerateTriggerResponse struct {
 	Status  string `json:"status"`
 	Message string `json:"message"`
@@ -123,6 +132,23 @@ type ResumeQueueItemResponse struct {
 
 type ResumeQueueListResponse struct {
 	Data []ResumeQueueItemResponse `json:"data"`
+}
+
+type ResumeItemResponse struct {
+	JobID       string    `json:"job_id"`
+	CompanyName string    `json:"company_name"`
+	RoleTitle   string    `json:"role_title"`
+	Status      string    `json:"status"`
+	ResumeLink  string    `json:"resume_link"`
+	AppliedAt   time.Time `json:"applied_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type ListResumesResponse struct {
+	Data  []ResumeItemResponse `json:"data"`
+	Page  int                  `json:"page"`
+	Limit int                  `json:"limit"`
+	Total int64                `json:"total"`
 }
 
 type UpdateResumeLinkRequest struct {
