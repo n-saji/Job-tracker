@@ -9,7 +9,7 @@ on:
       - "Dockerfile"
       - "go.mod"
       - "go.sum"
-      - "cmd/**"
+      - "main.go"
       - "internal/**"
       - "migrations/**"
       - ".github/workflows/dockerhub-backend.yml"

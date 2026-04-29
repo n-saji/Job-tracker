@@ -6,14 +6,14 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY cmd ./cmd
+COPY main.go ./
 COPY internal ./internal
 COPY migrations ./migrations
 
 ARG TARGETOS
 ARG TARGETARCH
 
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/job-tracker-api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/job-tracker-api ./main.go
 
 FROM alpine:3.22
 WORKDIR /app
@@ -22,13 +22,12 @@ WORKDIR /app
 RUN apk add --no-cache ca-certificates
 
 # Match app relative paths used by config and migrations.
-COPY --from=builder /out/job-tracker-api /app/cmd/api/job-tracker-api
+COPY --from=builder /out/job-tracker-api /app/job-tracker-api
 COPY --from=builder /src/migrations /app/migrations
 
-# App expects ../../.env relative to /app/cmd/api.
-RUN mkdir -p /app/cmd/api && touch /app/.env
+RUN touch /app/.env
 
-WORKDIR /app/cmd/api
+WORKDIR /app
 EXPOSE 8000
 
 CMD ["./job-tracker-api"]
