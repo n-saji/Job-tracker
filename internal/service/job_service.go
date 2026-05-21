@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -34,6 +35,16 @@ func (s *JobService) Create(ctx context.Context, req dto.CreateJobRequest) (*dao
 		return nil, fmt.Errorf("apply_link is required: %w", globals.ErrBadRequest)
 	}
 
+	status, verdict, discardReason, rejectReason, err := resolveJobStatusInputs(req.Status, req.DiscardReason, req.Verdict, req.RejectReason)
+	if err != nil {
+		return nil, err
+	}
+
+	sectionScores, extracted, flags, totalScore, err := marshalAssessmentPayload(req.SectionScores, req.Extracted, req.Flags, req.TotalScore)
+	if err != nil {
+		return nil, err
+	}
+
 	job, err := s.dao.Create(ctx, dao.CreateJobParams{
 		CompanyName:    strings.TrimSpace(req.CompanyName),
 		RoleTitle:      strings.TrimSpace(req.RoleTitle),
@@ -42,8 +53,14 @@ func (s *JobService) Create(ctx context.Context, req dto.CreateJobRequest) (*dao
 		ApplyLink:      normalizedApplyLink,
 		LinkedInJobURL: strings.TrimSpace(req.LinkedInJobURL),
 		ResumeLink:     strings.TrimSpace(req.ResumeLink),
-		Status:         strings.ToLower(strings.TrimSpace(req.Status)),
-		DiscardReason:  normalizeOptionalDiscardReason(req.DiscardReason),
+		Status:         status,
+		Verdict:        verdict,
+		DiscardReason:  discardReason,
+		RejectReason:   rejectReason,
+		TotalScore:     totalScore,
+		SectionScores:  sectionScores,
+		Extracted:      extracted,
+		Flags:          flags,
 		SalaryText:     strings.TrimSpace(req.SalaryText),
 		IsEasyApply:    bool(strings.EqualFold(req.IsEasyApply, "true")),
 		MatchRating:    req.MatchRating,
@@ -75,7 +92,7 @@ func (s *JobService) GetByID(ctx context.Context, id string) (*dao.Job, error) {
 	return job, nil
 }
 
-func (s *JobService) List(ctx context.Context, page, limit int, status, discardReason string, includeDiscarded bool, company, location string, minMatchRating, maxMatchRating *float64, sortMatch string) ([]dao.Job, int64, int, int, error) {
+func (s *JobService) List(ctx context.Context, page, limit int, status, discardReason string, includeDiscarded bool, company, location, verdict string, minMatchRating, maxMatchRating *float64, scoreField string, minScore, maxScore *int, sortMatch, scoreSort string) ([]dao.Job, int64, int, int, error) {
 	if page <= 0 {
 		page = globals.DefaultPage
 	}
@@ -90,6 +107,13 @@ func (s *JobService) List(ctx context.Context, page, limit int, status, discardR
 	if status != "" {
 		if _, ok := globals.AllowedStatuses[status]; !ok {
 			return nil, 0, 0, 0, fmt.Errorf("invalid status: %w", globals.ErrBadRequest)
+		}
+	}
+
+	verdict = strings.ToUpper(strings.TrimSpace(verdict))
+	if verdict != "" {
+		if _, ok := globals.AllowedVerdicts[verdict]; !ok {
+			return nil, 0, 0, 0, fmt.Errorf("invalid verdict: %w", globals.ErrBadRequest)
 		}
 	}
 
@@ -125,6 +149,31 @@ func (s *JobService) List(ctx context.Context, page, limit int, status, discardR
 		return nil, 0, 0, 0, fmt.Errorf("invalid sort_match: %w", globals.ErrBadRequest)
 	}
 
+	scoreField = strings.ToLower(strings.TrimSpace(scoreField))
+	if scoreField != "" {
+		if _, ok := globals.AllowedScoreFields[scoreField]; !ok {
+			return nil, 0, 0, 0, fmt.Errorf("invalid score_field: %w", globals.ErrBadRequest)
+		}
+	} else if minScore != nil || maxScore != nil || scoreSort != "" {
+		return nil, 0, 0, 0, fmt.Errorf("score_field is required when using score filters or score sort: %w", globals.ErrBadRequest)
+	}
+	if minScore != nil && *minScore < 0 {
+		return nil, 0, 0, 0, fmt.Errorf("min_score must be between 0 and 100: %w", globals.ErrBadRequest)
+	}
+	if maxScore != nil && *maxScore < 0 {
+		return nil, 0, 0, 0, fmt.Errorf("max_score must be between 0 and 100: %w", globals.ErrBadRequest)
+	}
+	if minScore != nil && maxScore != nil && *minScore > *maxScore {
+		return nil, 0, 0, 0, fmt.Errorf("min_score cannot be greater than max_score: %w", globals.ErrBadRequest)
+	}
+	scoreSort = strings.ToLower(strings.TrimSpace(scoreSort))
+	if scoreField != "" && scoreSort == "" {
+		scoreSort = "desc"
+	}
+	if scoreSort != "" && scoreSort != "asc" && scoreSort != "desc" {
+		return nil, 0, 0, 0, fmt.Errorf("invalid score_sort: %w", globals.ErrBadRequest)
+	}
+
 	jobs, total, err := s.dao.List(ctx, dao.ListJobsParams{
 		Page:             page,
 		Limit:            limit,
@@ -133,9 +182,14 @@ func (s *JobService) List(ctx context.Context, page, limit int, status, discardR
 		IncludeDiscarded: includeDiscarded,
 		Company:          strings.TrimSpace(company),
 		Location:         strings.TrimSpace(location),
+		Verdict:          verdict,
 		MinMatchRating:   minMatchRating,
 		MaxMatchRating:   maxMatchRating,
 		SortMatch:        sortMatch,
+		ScoreField:       scoreField,
+		MinScore:         minScore,
+		MaxScore:         maxScore,
+		ScoreSort:        scoreSort,
 	})
 	if err != nil {
 		return nil, 0, 0, 0, err
@@ -385,12 +439,36 @@ func validateCreate(req dto.CreateJobRequest) error {
 		return fmt.Errorf("apply_link is required: %w", globals.ErrBadRequest)
 	}
 	status := strings.ToLower(strings.TrimSpace(req.Status))
-	if _, ok := globals.AllowedStatuses[status]; !ok {
+	verdict := strings.ToUpper(strings.TrimSpace(derefString(req.Verdict)))
+	if verdict == "" && isVerdictLikeStatus(status) {
+		verdict = strings.ToUpper(status)
+	}
+	if verdict != "" {
+		if _, ok := globals.AllowedVerdicts[verdict]; !ok {
+			return fmt.Errorf("invalid verdict: %w", globals.ErrBadRequest)
+		}
+	} else if _, ok := globals.AllowedStatuses[status]; !ok {
 		return fmt.Errorf("invalid status: %w", globals.ErrBadRequest)
 	}
 
 	discardReason := strings.ToLower(strings.TrimSpace(req.DiscardReason))
-	if status == globals.StatusDiscarded {
+	rejectReason := strings.ToLower(strings.TrimSpace(derefString(req.RejectReason)))
+	if verdict == globals.VerdictReject {
+		if discardReason == "" && rejectReason == "" {
+			return fmt.Errorf("reject_reason is required when verdict is reject: %w", globals.ErrBadRequest)
+		}
+		reason := rejectReason
+		if reason == "" {
+			reason = discardReason
+		}
+		if _, ok := globals.AllowedDiscardReasons[reason]; !ok {
+			return fmt.Errorf("invalid reject_reason: %w", globals.ErrBadRequest)
+		}
+	} else if verdict != "" {
+		if discardReason != "" || rejectReason != "" {
+			return fmt.Errorf("discard_reason is only allowed when verdict is reject: %w", globals.ErrBadRequest)
+		}
+	} else if status == globals.StatusDiscarded {
 		if discardReason == "" {
 			return fmt.Errorf("discard_reason is required when status is discarded: %w", globals.ErrBadRequest)
 		}
@@ -467,24 +545,41 @@ func validateAndBuildUpdate(req dto.UpdateJobRequest, current *dao.Job) (dao.Upd
 	}
 	if req.Status != nil {
 		provided = true
-		value := strings.ToLower(strings.TrimSpace(*req.Status))
-		if _, ok := globals.AllowedStatuses[value]; !ok {
-			return params, fmt.Errorf("invalid status: %w", globals.ErrBadRequest)
+		resolvedStatus, resolvedVerdict, resolvedDiscardReason, resolvedRejectReason, err := resolveJobStatusInputs(*req.Status, derefString(req.DiscardReason), req.Verdict, req.RejectReason)
+		if err != nil {
+			return params, err
 		}
-		params.Status = &value
-		targetStatus = value
+		params.Status = &resolvedStatus
+		targetStatus = resolvedStatus
+		params.Verdict = resolvedVerdict
+		params.DiscardReason = resolvedDiscardReason
+		params.RejectReason = resolvedRejectReason
 	}
 	if req.DiscardReason != nil {
 		provided = true
-		value := strings.ToLower(strings.TrimSpace(*req.DiscardReason))
-		if value == "" {
-			params.ClearDiscardReason = true
-		} else {
-			if _, ok := globals.AllowedDiscardReasons[value]; !ok {
-				return params, fmt.Errorf("invalid discard_reason: %w", globals.ErrBadRequest)
+		if req.Status == nil {
+			value := strings.ToLower(strings.TrimSpace(*req.DiscardReason))
+			if value == "" {
+				params.ClearDiscardReason = true
+			} else {
+				if _, ok := globals.AllowedDiscardReasons[value]; !ok {
+					return params, fmt.Errorf("invalid discard_reason: %w", globals.ErrBadRequest)
+				}
+				params.DiscardReason = &value
 			}
-			params.DiscardReason = &value
 		}
+	}
+	if req.Verdict != nil {
+		provided = true
+		resolvedStatus, resolvedVerdict, resolvedDiscardReason, resolvedRejectReason, err := resolveJobStatusInputs(derefString(req.Status), derefString(req.DiscardReason), req.Verdict, req.RejectReason)
+		if err != nil {
+			return params, err
+		}
+		params.Status = &resolvedStatus
+		targetStatus = resolvedStatus
+		params.Verdict = resolvedVerdict
+		params.DiscardReason = resolvedDiscardReason
+		params.RejectReason = resolvedRejectReason
 	}
 	if req.SalaryText != nil {
 		provided = true
@@ -513,6 +608,46 @@ func validateAndBuildUpdate(req dto.UpdateJobRequest, current *dao.Job) (dao.Upd
 			return params, fmt.Errorf("applied_at cannot be zero: %w", globals.ErrBadRequest)
 		}
 		params.AppliedAt = req.AppliedAt
+	}
+	if req.TotalScore != nil {
+		provided = true
+		if *req.TotalScore < 0 || *req.TotalScore > 100 {
+			return params, fmt.Errorf("total_score must be between 0 and 100: %w", globals.ErrBadRequest)
+		}
+		params.TotalScore = req.TotalScore
+	}
+	if req.SectionScores != nil {
+		provided = true
+		sectionScores, err := marshalJSONOrDefault(req.SectionScores, dto.JobSectionScores{})
+		if err != nil {
+			return params, err
+		}
+		params.SectionScores = sectionScores
+	}
+	if req.Extracted != nil {
+		provided = true
+		extracted, err := marshalJSONOrDefault(req.Extracted, dto.JobExtractedData{})
+		if err != nil {
+			return params, err
+		}
+		params.Extracted = extracted
+	}
+	if req.Flags != nil {
+		provided = true
+		flags, err := marshalJSONOrDefault(req.Flags, []string{})
+		if err != nil {
+			return params, err
+		}
+		params.Flags = flags
+	}
+	if req.RejectReason != nil {
+		provided = true
+		value := strings.ToLower(strings.TrimSpace(*req.RejectReason))
+		if value == "" {
+			params.RejectReason = nil
+		} else {
+			params.RejectReason = &value
+		}
 	}
 
 	if !provided {
@@ -544,6 +679,150 @@ func normalizeOptionalDiscardReason(raw string) *string {
 		return nil
 	}
 	return &value
+}
+
+func resolveJobStatusInputs(rawStatus string, rawDiscardReason string, rawVerdict *string, rawRejectReason *string) (string, *string, *string, *string, error) {
+	status := strings.ToLower(strings.TrimSpace(rawStatus))
+	discardReason := strings.ToLower(strings.TrimSpace(rawDiscardReason))
+	rejectReason := strings.ToLower(strings.TrimSpace(derefString(rawRejectReason)))
+	verdict := strings.ToUpper(strings.TrimSpace(derefString(rawVerdict)))
+
+	if verdict == "" && isVerdictLikeStatus(status) {
+		verdict = strings.ToUpper(status)
+	}
+
+	if verdict != "" {
+		if _, ok := globals.AllowedVerdicts[verdict]; !ok {
+			return "", nil, nil, nil, fmt.Errorf("invalid verdict: %w", globals.ErrBadRequest)
+		}
+
+		resolvedStatus, resolvedDiscardReason, err := deriveStatusFromVerdict(verdict, rejectReason, discardReason)
+		if err != nil {
+			return "", nil, nil, nil, err
+		}
+
+		if status != "" && !isVerdictLikeStatus(status) && status != resolvedStatus {
+			return "", nil, nil, nil, fmt.Errorf("status does not match verdict: %w", globals.ErrBadRequest)
+		}
+
+		resolvedVerdict := verdict
+		resolvedRejectReason := rejectReason
+		if resolvedRejectReason == "" {
+			resolvedRejectReason = discardReason
+		}
+		return resolvedStatus, &resolvedVerdict, resolvedDiscardReason, stringPtrOrNil(resolvedRejectReason), nil
+	}
+
+	if status == "" {
+		return "", nil, nil, nil, fmt.Errorf("status or verdict is required: %w", globals.ErrBadRequest)
+	}
+	if _, ok := globals.AllowedStatuses[status]; !ok {
+		return "", nil, nil, nil, fmt.Errorf("invalid status: %w", globals.ErrBadRequest)
+	}
+
+	if status == globals.StatusDiscarded {
+		if discardReason == "" {
+			return "", nil, nil, nil, fmt.Errorf("discard_reason is required when status is discarded: %w", globals.ErrBadRequest)
+		}
+		if _, ok := globals.AllowedDiscardReasons[discardReason]; !ok {
+			return "", nil, nil, nil, fmt.Errorf("invalid discard_reason: %w", globals.ErrBadRequest)
+		}
+		return status, nil, &discardReason, stringPtrOrNil(rejectReason), nil
+	}
+
+	if discardReason != "" {
+		return "", nil, nil, nil, fmt.Errorf("discard_reason is only allowed when status is discarded: %w", globals.ErrBadRequest)
+	}
+
+	return status, nil, nil, stringPtrOrNil(rejectReason), nil
+}
+
+func deriveStatusFromVerdict(verdict, rejectReason, fallbackDiscardReason string) (string, *string, error) {
+	switch verdict {
+	case globals.VerdictApply, globals.VerdictReview:
+		if rejectReason != "" || fallbackDiscardReason != "" {
+			return "", nil, fmt.Errorf("discard_reason is only allowed when verdict is reject: %w", globals.ErrBadRequest)
+		}
+		return globals.StatusAdded, nil, nil
+	case globals.VerdictReject:
+		reason := rejectReason
+		if reason == "" {
+			reason = fallbackDiscardReason
+		}
+		if reason == "" {
+			return "", nil, fmt.Errorf("reject_reason is required when verdict is reject: %w", globals.ErrBadRequest)
+		}
+		if _, ok := globals.AllowedDiscardReasons[reason]; !ok {
+			return "", nil, fmt.Errorf("invalid reject_reason: %w", globals.ErrBadRequest)
+		}
+		return globals.StatusDiscarded, &reason, nil
+	default:
+		return "", nil, fmt.Errorf("invalid verdict: %w", globals.ErrBadRequest)
+	}
+}
+
+func isVerdictLikeStatus(status string) bool {
+	_, ok := globals.AllowedVerdicts[strings.ToUpper(strings.TrimSpace(status))]
+	return ok
+}
+
+func marshalAssessmentPayload(sectionScores *dto.JobSectionScores, extracted *dto.JobExtractedData, flags []string, totalScore *int) ([]byte, []byte, []byte, *int, error) {
+	var sectionBytes []byte
+	var err error
+	if sectionScores == nil {
+		sectionBytes = []byte("{}")
+	} else {
+		sectionBytes, err = json.Marshal(sectionScores)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+	}
+
+	var extractedBytes []byte
+	if extracted == nil {
+		extractedBytes = []byte("{}")
+	} else {
+		extractedBytes, err = json.Marshal(extracted)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+	}
+
+	if flags == nil {
+		flags = []string{}
+	}
+	flagsBytes, err := json.Marshal(flags)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	if totalScore != nil && (*totalScore < 0 || *totalScore > 100) {
+		return nil, nil, nil, nil, fmt.Errorf("total_score must be between 0 and 100: %w", globals.ErrBadRequest)
+	}
+
+	return sectionBytes, extractedBytes, flagsBytes, totalScore, nil
+}
+
+func marshalJSONOrDefault[T any](value *T, zero T) ([]byte, error) {
+	if value == nil {
+		return json.Marshal(zero)
+	}
+	return json.Marshal(value)
+}
+
+func stringPtrOrNil(value string) *string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
+}
+
+func derefString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func normalizeApplyLink(raw string) string {

@@ -39,6 +39,7 @@ func (c *JobController) CreateJob(w http.ResponseWriter, r *http.Request) {
 
 	job, err := c.service.Create(ctx, req)
 	if err != nil {
+		fmt.Printf("error creating job: %v\n", err)
 		writeServiceError(w, err)
 		return
 	}
@@ -127,6 +128,7 @@ func (c *JobController) ListJobs(w http.ResponseWriter, r *http.Request) {
 	includeDiscarded := parseBoolQuery(r, "include_discarded", false)
 	company := r.URL.Query().Get("company")
 	location := r.URL.Query().Get("location")
+	verdict := r.URL.Query().Get("verdict")
 	minMatchRating, err := parseOptionalFloatQuery(r, "min_match_rating")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, globals.CodeBadRequest, "min_match_rating must be a valid number")
@@ -137,7 +139,19 @@ func (c *JobController) ListJobs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, globals.CodeBadRequest, "max_match_rating must be a valid number")
 		return
 	}
+	scoreField := r.URL.Query().Get("score_field")
+	scoreMin, err := parseOptionalIntQuery(r, "score_min")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, globals.CodeBadRequest, "score_min must be a valid integer")
+		return
+	}
+	scoreMax, err := parseOptionalIntQuery(r, "score_max")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, globals.CodeBadRequest, "score_max must be a valid integer")
+		return
+	}
 	sortMatch := r.URL.Query().Get("sort_match")
+	scoreSort := r.URL.Query().Get("score_sort")
 
 	jobs, total, normalizedPage, normalizedLimit, err := c.service.List(
 		ctx,
@@ -148,9 +162,14 @@ func (c *JobController) ListJobs(w http.ResponseWriter, r *http.Request) {
 		includeDiscarded,
 		company,
 		location,
+		verdict,
 		minMatchRating,
 		maxMatchRating,
+		scoreField,
+		scoreMin,
+		scoreMax,
 		sortMatch,
+		scoreSort,
 	)
 	if err != nil {
 		writeServiceError(w, err)
@@ -260,12 +279,12 @@ func (c *JobController) ExistsByApplyLink(w http.ResponseWriter, r *http.Request
 	ctx, cancel := service.WithTimeout(r.Context(), c.requestTimeout)
 	defer cancel()
 
-	applyLink := r.URL.Query().Get("apply_link")
-	if applyLink == "" {
-		writeJSON(w, http.StatusOK, dto.ExistsApplyLinkResponse{Exists: false})
+	var req dto.ApplyURLReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, globals.CodeBadRequest, "invalid request payload")
 		return
 	}
-	exists, err := c.service.ExistsByApplyLink(ctx, applyLink)
+	exists, err := c.service.ExistsByApplyLink(ctx, req.ApplyLink)
 	if err != nil {
 		writeServiceError(w, err)
 		return
@@ -405,6 +424,10 @@ func (c *JobController) DeleteResumeQueueItem(w http.ResponseWriter, r *http.Req
 }
 
 func mapJob(job *dao.Job) dto.JobResponse {
+	sectionScores := decodeJobSectionScores(job.SectionScores)
+	extracted := decodeJobExtractedData(job.Extracted)
+	flags := decodeJobFlags(job.Flags)
+
 	return dto.JobResponse{
 		ID:             job.ID.String(),
 		CompanyName:    job.CompanyName,
@@ -416,6 +439,12 @@ func mapJob(job *dao.Job) dto.JobResponse {
 		ResumeLink:     job.ResumeLink,
 		Status:         job.Status,
 		DiscardReason:  job.DiscardReason,
+		Verdict:        job.Verdict,
+		TotalScore:     job.TotalScore,
+		SectionScores:  sectionScores,
+		Extracted:      extracted,
+		RejectReason:   job.RejectReason,
+		Flags:          flags,
 		SalaryText:     job.SalaryText,
 		IsEasyApply:    job.IsEasyApply,
 		MatchRating:    job.MatchRating,
@@ -466,6 +495,56 @@ func parseOptionalFloatQuery(r *http.Request, key string) (*float64, error) {
 	}
 
 	return &parsed, nil
+}
+
+func parseOptionalIntQuery(r *http.Request, key string) (*int, error) {
+	value := r.URL.Query().Get(key)
+	if value == "" {
+		return nil, nil
+	}
+
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return nil, err
+	}
+
+	return &parsed, nil
+}
+
+func decodeJobSectionScores(raw []byte) *dto.JobSectionScores {
+	if len(raw) == 0 || string(raw) == "{}" {
+		return nil
+	}
+
+	var payload dto.JobSectionScores
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil
+	}
+	return &payload
+}
+
+func decodeJobExtractedData(raw []byte) *dto.JobExtractedData {
+	if len(raw) == 0 || string(raw) == "{}" {
+		return nil
+	}
+
+	var payload dto.JobExtractedData
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil
+	}
+	return &payload
+}
+
+func decodeJobFlags(raw []byte) []string {
+	if len(raw) == 0 || string(raw) == "[]" {
+		return nil
+	}
+
+	var payload []string
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil
+	}
+	return payload
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

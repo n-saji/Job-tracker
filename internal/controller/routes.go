@@ -55,7 +55,7 @@ func NewRouter(jobService *service.JobService, resumeQueueService *service.Resum
 			r.Post("/{id}/resume-generate", jobController.TriggerResumeGenerate)
 			r.Get("/", jobController.ListJobs)
 			r.Get("/apply-rate", jobController.GetApplyRateStats)
-			r.Get("/exists", jobController.ExistsByApplyLink)
+			r.Post("/exists", jobController.ExistsByApplyLink)
 			r.Get("/{id}", jobController.GetJob)
 			r.Put("/{id}", jobController.UpdateJob)
 			r.Patch("/{id}/resume-link", jobController.UpdateResumeLink)

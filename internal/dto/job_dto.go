@@ -28,35 +28,47 @@ func (o *OptionalFloat64) UnmarshalJSON(data []byte) error {
 }
 
 type CreateJobRequest struct {
-	CompanyName    string    `json:"company_name"`
-	RoleTitle      string    `json:"role_title"`
-	Location       string    `json:"location"`
-	JobDescription string    `json:"job_description"`
-	ApplyLink      string    `json:"apply_link"`
-	LinkedInJobURL string    `json:"linkedin_job_url"`
-	ResumeLink     string    `json:"resume_link"`
-	Status         string    `json:"status"`
-	DiscardReason  string    `json:"discard_reason"`
-	SalaryText     string    `json:"salary_text"`
-	IsEasyApply    string    `json:"is_easy_apply"`
-	MatchRating    *float64  `json:"match_rating"`
-	AppliedAt      time.Time `json:"applied_at"`
+	CompanyName    string            `json:"company_name"`
+	RoleTitle      string            `json:"role_title"`
+	Location       string            `json:"location"`
+	JobDescription string            `json:"job_description"`
+	ApplyLink      string            `json:"apply_link"`
+	LinkedInJobURL string            `json:"linkedin_job_url"`
+	ResumeLink     string            `json:"resume_link"`
+	Status         string            `json:"status"`
+	DiscardReason  string            `json:"discard_reason"`
+	Verdict        *string           `json:"verdict,omitempty"`
+	TotalScore     *int              `json:"total_score,omitempty"`
+	SectionScores  *JobSectionScores `json:"section_scores,omitempty"`
+	Extracted      *JobExtractedData `json:"extracted,omitempty"`
+	RejectReason   *string           `json:"reject_reason,omitempty"`
+	Flags          []string          `json:"flags,omitempty"`
+	SalaryText     string            `json:"salary_text"`
+	IsEasyApply    string            `json:"is_easy_apply"`
+	MatchRating    *float64          `json:"match_rating"`
+	AppliedAt      time.Time         `json:"applied_at"`
 }
 
 type UpdateJobRequest struct {
-	CompanyName    *string         `json:"company_name"`
-	RoleTitle      *string         `json:"role_title"`
-	Location       *string         `json:"location"`
-	JobDescription *string         `json:"job_description"`
-	ApplyLink      *string         `json:"apply_link"`
-	LinkedInJobURL *string         `json:"linkedin_job_url"`
-	ResumeLink     *string         `json:"resume_link"`
-	Status         *string         `json:"status"`
-	DiscardReason  *string         `json:"discard_reason"`
-	SalaryText     *string         `json:"salary_text"`
-	IsEasyApply    *bool           `json:"is_easy_apply"`
-	MatchRating    OptionalFloat64 `json:"match_rating"`
-	AppliedAt      *time.Time      `json:"applied_at"`
+	CompanyName    *string           `json:"company_name"`
+	RoleTitle      *string           `json:"role_title"`
+	Location       *string           `json:"location"`
+	JobDescription *string           `json:"job_description"`
+	ApplyLink      *string           `json:"apply_link"`
+	LinkedInJobURL *string           `json:"linkedin_job_url"`
+	ResumeLink     *string           `json:"resume_link"`
+	Status         *string           `json:"status"`
+	DiscardReason  *string           `json:"discard_reason"`
+	Verdict        *string           `json:"verdict"`
+	TotalScore     *int              `json:"total_score"`
+	SectionScores  *JobSectionScores `json:"section_scores"`
+	Extracted      *JobExtractedData `json:"extracted"`
+	RejectReason   *string           `json:"reject_reason"`
+	Flags          *[]string         `json:"flags"`
+	SalaryText     *string           `json:"salary_text"`
+	IsEasyApply    *bool             `json:"is_easy_apply"`
+	MatchRating    OptionalFloat64   `json:"match_rating"`
+	AppliedAt      *time.Time        `json:"applied_at"`
 }
 
 type BulkDeleteJobsRequest struct {
@@ -70,23 +82,29 @@ type BulkUpdateJobsStatusRequest struct {
 }
 
 type JobResponse struct {
-	ID             string     `json:"id"`
-	CompanyName    string     `json:"company_name"`
-	RoleTitle      string     `json:"role_title"`
-	Location       string     `json:"location"`
-	JobDescription string     `json:"job_description"`
-	ApplyLink      string     `json:"apply_link"`
-	LinkedInJobURL string     `json:"linkedin_job_url"`
-	ResumeLink     string     `json:"resume_link"`
-	Status         string     `json:"status"`
-	DiscardReason  *string    `json:"discard_reason,omitempty"`
-	SalaryText     string     `json:"salary_text"`
-	IsEasyApply    bool       `json:"is_easy_apply"`
-	MatchRating    *float64   `json:"match_rating,omitempty"`
-	AppliedAt      time.Time  `json:"applied_at"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
-	DeletedAt      *time.Time `json:"deleted_at,omitempty"`
+	ID             string            `json:"id"`
+	CompanyName    string            `json:"company_name"`
+	RoleTitle      string            `json:"role_title"`
+	Location       string            `json:"location"`
+	JobDescription string            `json:"job_description"`
+	ApplyLink      string            `json:"apply_link"`
+	LinkedInJobURL string            `json:"linkedin_job_url"`
+	ResumeLink     string            `json:"resume_link"`
+	Status         string            `json:"status"`
+	DiscardReason  *string           `json:"discard_reason,omitempty"`
+	Verdict        *string           `json:"verdict,omitempty"`
+	TotalScore     *int              `json:"total_score,omitempty"`
+	SectionScores  *JobSectionScores `json:"section_scores,omitempty"`
+	Extracted      *JobExtractedData `json:"extracted,omitempty"`
+	RejectReason   *string           `json:"reject_reason,omitempty"`
+	Flags          []string          `json:"flags,omitempty"`
+	SalaryText     string            `json:"salary_text"`
+	IsEasyApply    bool              `json:"is_easy_apply"`
+	MatchRating    *float64          `json:"match_rating,omitempty"`
+	AppliedAt      time.Time         `json:"applied_at"`
+	CreatedAt      time.Time         `json:"created_at"`
+	UpdatedAt      time.Time         `json:"updated_at"`
+	DeletedAt      *time.Time        `json:"deleted_at,omitempty"`
 }
 
 type ListJobsResponse struct {
@@ -153,4 +171,8 @@ type ListResumesResponse struct {
 
 type UpdateResumeLinkRequest struct {
 	ResumeLink string `json:"resume_link"`
+}
+
+type ApplyURLReq struct {
+	ApplyLink string `json:"apply_link"`
 }
