@@ -44,18 +44,18 @@ const (
 	DiscardReasonLessExperience    = "less_experience"
 	DiscardReasonCitizenship       = "citizenship"
 	DiscardReasonNotFit            = "not_fit"
-	DiscardReasonSponsorship      = "sponsorship"
-	DiscardReasonPrimaryStack     = "primary_stack_mismatch"
+	DiscardReasonSponsorship       = "sponsorship"
+	DiscardReasonPrimaryStack      = "primary_stack_mismatch"
 )
 
-var AllowedDiscardReasons = map[string]struct{}{
-	DiscardReasonHighApplicants:    {},
-	DiscardReasonSecurityClearance: {},
-	DiscardReasonLessExperience:    {},
-	DiscardReasonCitizenship:       {},
-	DiscardReasonNotFit:            {},
-	DiscardReasonSponsorship:      {},
-	DiscardReasonPrimaryStack:     {},
+var AllowedDiscardReasons = map[string]bool{
+	DiscardReasonHighApplicants:    true,
+	DiscardReasonSecurityClearance: true,
+	DiscardReasonLessExperience:    true,
+	DiscardReasonCitizenship:       true,
+	DiscardReasonNotFit:            true,
+	DiscardReasonSponsorship:       true,
+	DiscardReasonPrimaryStack:      true,
 }
 
 const (

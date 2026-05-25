@@ -695,7 +695,6 @@ func resolveJobStatusInputs(rawStatus string, rawDiscardReason string, rawVerdic
 		if _, ok := globals.AllowedVerdicts[verdict]; !ok {
 			return "", nil, nil, nil, fmt.Errorf("invalid verdict: %w", globals.ErrBadRequest)
 		}
-
 		resolvedStatus, resolvedDiscardReason, err := deriveStatusFromVerdict(verdict, rejectReason, discardReason)
 		if err != nil {
 			return "", nil, nil, nil, err
