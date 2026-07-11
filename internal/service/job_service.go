@@ -26,6 +26,9 @@ func NewJobService(jobDAO dao.JobDAO) *JobService {
 }
 
 func (s *JobService) Create(ctx context.Context, req dto.CreateJobRequest) (*dao.Job, error) {
+	
+	fillDefaultsForCreate(&req)
+
 	if err := validateCreate(req); err != nil {
 		return nil, err
 	}
@@ -423,6 +426,24 @@ func (s *JobService) GetApplyRateStats(ctx context.Context) (dto.ApplyRateStatsR
 		WeeklyAverage:  total / float64(elapsedWeeks),
 		MonthlyAverage: total / float64(elapsedMonths),
 	}, nil
+}
+
+func fillDefaultsForCreate(req *dto.CreateJobRequest) {
+	if req.AppliedAt.IsZero() {
+		req.AppliedAt = time.Now()
+	}
+	if req.CompanyName == "" {
+		req.CompanyName = "Unknown Company"
+	}
+	if req.RoleTitle == "" {
+		req.RoleTitle = "Unknown Role"
+	}
+	if req.Location == "" {
+		req.Location = "Unknown Location"
+	}
+	if req.ApplyLink == "" {
+		req.ApplyLink = req.LinkedInJobURL
+	}
 }
 
 func validateCreate(req dto.CreateJobRequest) error {
