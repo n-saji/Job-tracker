@@ -10,7 +10,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func NewRouter(jobService *service.JobService, resumeQueueService *service.ResumeQueueService, requestTimeout time.Duration) http.Handler {
+func NewRouter(jobService *service.JobService, resumeQueueService *service.ResumeQueueService, applicationService *service.ApplicationService, authService *service.AuthService, requestTimeout time.Duration) http.Handler {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -39,6 +39,8 @@ func NewRouter(jobService *service.JobService, resumeQueueService *service.Resum
 	eventBroker := NewJobEventBroker()
 
 	jobController := NewJobController(jobService, resumeQueueService, eventBroker, requestTimeout)
+	applicationController := NewApplicationController(applicationService, requestTimeout)
+	authController := NewAuthController(authService, requestTimeout)
 
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -61,6 +63,22 @@ func NewRouter(jobService *service.JobService, resumeQueueService *service.Resum
 			r.Patch("/{id}/resume-link", jobController.UpdateResumeLink)
 			r.Delete("/{id}", jobController.DeleteJob)
 		})
+	})
+
+	r.Route("/applications", func(r chi.Router) {
+		r.Use(middleware.Timeout(requestTimeout))
+		r.Post("/", applicationController.CreateApplication)
+		r.Post("/bulk", applicationController.BulkCreateApplications)
+		r.Get("/", applicationController.ListApplications)
+		r.Get("/{id}", applicationController.GetApplication)
+		r.Post("/{id}/cancel", applicationController.CancelApplication)
+		r.Get("/{id}/events", applicationController.GetApplicationEvents)
+	})
+
+	r.Route("/auth", func(r chi.Router) {
+		r.Use(middleware.Timeout(requestTimeout))
+		r.Get("/status", authController.GetStatus)
+		r.Post("/preflight", authController.Preflight)
 	})
 
 	r.Route("/resume-queue", func(r chi.Router) {

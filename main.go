@@ -46,7 +46,9 @@ func main() {
 	resumeQueueDAO := dao.NewPgxResumeQueueDAO(pool)
 	jobService := service.NewJobService(jobDAO)
 	resumeQueueService := service.NewResumeQueueService(jobDAO, resumeQueueDAO, cfg.N8NWebhookURL)
-	router := controller.NewRouter(jobService, resumeQueueService, cfg.RequestTimeout)
+	applicationService := service.NewApplicationService(cfg.PythonAgentURL)
+	authService := service.NewAuthService(cfg.PythonAgentURL)
+	router := controller.NewRouter(jobService, resumeQueueService, applicationService, authService, cfg.RequestTimeout)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.AppPort,

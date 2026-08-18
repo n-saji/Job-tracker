@@ -46,6 +46,10 @@ const (
 	DiscardReasonNotFit            = "not_fit"
 	DiscardReasonSponsorship       = "sponsorship"
 	DiscardReasonPrimaryStack      = "primary_stack_mismatch"
+	DiscardReasonSeniorityMismatch = "seniority_mismatch"
+	DiscardReasonNonTechnical      = "non_technical"
+	DiscardReasonEmploymentType    = "employment_type"
+	DiscardReasonEmptyJD           = "empty_jd"
 )
 
 var AllowedDiscardReasons = map[string]bool{
@@ -56,6 +60,10 @@ var AllowedDiscardReasons = map[string]bool{
 	DiscardReasonNotFit:            true,
 	DiscardReasonSponsorship:       true,
 	DiscardReasonPrimaryStack:      true,
+	DiscardReasonSeniorityMismatch: true,
+	DiscardReasonNonTechnical:      true,
+	DiscardReasonEmploymentType:    true,
+	DiscardReasonEmptyJD:           true,
 }
 
 const (

@@ -34,7 +34,7 @@ func (c *JobController) CreateJob(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateJobRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		fmt.Printf("decode error: %#v\n", err)
-    	fmt.Printf("decode error: %v\n", err)
+		fmt.Printf("decode error: %v\n", err)
 		writeError(w, http.StatusBadRequest, globals.CodeBadRequest, "invalid request payload")
 		return
 	}
@@ -572,6 +572,8 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, globals.CodeNotFound, err.Error())
 	case errors.Is(err, globals.ErrConflict):
 		writeError(w, http.StatusConflict, globals.CodeConflict, err.Error())
+	case errors.Is(err, globals.ErrUpstream):
+		writeError(w, http.StatusBadGateway, globals.CodeUpstream, err.Error())
 	default:
 		writeError(w, http.StatusInternalServerError, globals.CodeInternal, "internal server error")
 	}

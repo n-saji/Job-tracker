@@ -26,7 +26,7 @@ func NewJobService(jobDAO dao.JobDAO) *JobService {
 }
 
 func (s *JobService) Create(ctx context.Context, req dto.CreateJobRequest) (*dao.Job, error) {
-	
+
 	fillDefaultsForCreate(&req)
 
 	if err := validateCreate(req); err != nil {
