@@ -47,8 +47,7 @@ func main() {
 	jobService := service.NewJobService(jobDAO)
 	resumeQueueService := service.NewResumeQueueService(jobDAO, resumeQueueDAO, cfg.N8NWebhookURL)
 	applicationService := service.NewApplicationService(cfg.PythonAgentURL)
-	authService := service.NewAuthService(cfg.PythonAgentURL)
-	router := controller.NewRouter(jobService, resumeQueueService, applicationService, authService, cfg.RequestTimeout)
+	router := controller.NewRouter(jobService, resumeQueueService, applicationService, cfg.RequestTimeout)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.AppPort,

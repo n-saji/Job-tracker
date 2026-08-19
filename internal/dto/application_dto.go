@@ -1,13 +1,13 @@
 package dto
 
-type CreateApplicationRequest struct {
+type CreateAgentSessionRequest struct {
 	JobID string `json:"job_id"`
-	Mode  string `json:"mode"`
 }
 
-type BulkCreateApplicationsRequest struct {
-	JobIDs []string `json:"job_ids"`
-	Mode   string   `json:"mode"`
+type CreateAgentSessionResponse struct {
+	ApplicationID string `json:"application_id"`
+	SessionToken  string `json:"session_token"`
+	ExpiresAt     string `json:"expires_at"`
 }
 
 type ApplicationResponse struct {
@@ -19,11 +19,6 @@ type ApplicationResponse struct {
 	ScreenshotPath *string `json:"screenshot_path"`
 	CompanyName    string  `json:"company_name"`
 	RoleTitle      string  `json:"role_title"`
-}
-
-type BulkCreateApplicationsResponse struct {
-	Created        int      `json:"created"`
-	ApplicationIDs []string `json:"application_ids"`
 }
 
 type ApplicationEventResponse struct {

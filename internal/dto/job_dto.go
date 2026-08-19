@@ -29,6 +29,7 @@ func (o *OptionalFloat64) UnmarshalJSON(data []byte) error {
 
 type CreateJobRequest struct {
 	CompanyName    string            `json:"company_name"`
+	CompanySize    *string           `json:"company_size,omitempty"`
 	RoleTitle      string            `json:"role_title"`
 	Location       string            `json:"location"`
 	JobDescription string            `json:"job_description"`
@@ -51,6 +52,7 @@ type CreateJobRequest struct {
 
 type UpdateJobRequest struct {
 	CompanyName    *string           `json:"company_name"`
+	CompanySize    *string           `json:"company_size"`
 	RoleTitle      *string           `json:"role_title"`
 	Location       *string           `json:"location"`
 	JobDescription *string           `json:"job_description"`
@@ -84,6 +86,7 @@ type BulkUpdateJobsStatusRequest struct {
 type JobResponse struct {
 	ID             string            `json:"id"`
 	CompanyName    string            `json:"company_name"`
+	CompanySize    *string           `json:"company_size,omitempty"`
 	RoleTitle      string            `json:"role_title"`
 	Location       string            `json:"location"`
 	JobDescription string            `json:"job_description"`

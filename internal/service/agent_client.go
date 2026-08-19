@@ -13,8 +13,8 @@ import (
 )
 
 // agentHTTPClient is the shared typed-HTTP-proxy plumbing for every service
-// that talks to the Python AI agent service (ApplicationService,
-// AuthService, ...) — request building, response decoding, and mapping the
+// that talks to the Python AI agent service (currently just
+// ApplicationService) — request building, response decoding, and mapping the
 // agent's HTTP status codes onto Go's existing globals.Err* sentinels so
 // every caller gets the same writeServiceError behavior.
 type agentHTTPClient struct {

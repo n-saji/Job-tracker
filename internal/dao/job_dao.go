@@ -16,6 +16,7 @@ import (
 type Job struct {
 	ID             uuid.UUID
 	CompanyName    string
+	CompanySize    *string
 	RoleTitle      string
 	Location       string
 	JobDescription string
@@ -41,6 +42,7 @@ type Job struct {
 
 type CreateJobParams struct {
 	CompanyName    string
+	CompanySize    *string
 	RoleTitle      string
 	Location       string
 	JobDescription string
@@ -63,6 +65,7 @@ type CreateJobParams struct {
 
 type UpdateJobParams struct {
 	CompanyName        *string
+	CompanySize        *string
 	RoleTitle          *string
 	Location           *string
 	JobDescription     *string
@@ -138,18 +141,19 @@ func NewPgxJobDAO(pool *pgxpool.Pool) *PgxJobDAO {
 func (d *PgxJobDAO) Create(ctx context.Context, params CreateJobParams) (*Job, error) {
 	query := `
 		INSERT INTO jobs (
-company_name, role_title, location, job_description, apply_link, linkedin_job_url,
+company_name, company_size, role_title, location, job_description, apply_link, linkedin_job_url,
 resume_link, status, verdict, total_score, discard_reason, reject_reason, section_scores,
 extracted, flags, salary_text, is_easy_apply, match_rating, applied_at
 )
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
-		RETURNING id, company_name, role_title, location, job_description, apply_link, linkedin_job_url,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+		RETURNING id, company_name, company_size, role_title, location, job_description, apply_link, linkedin_job_url,
 			resume_link, status, verdict, total_score, discard_reason, reject_reason, section_scores, extracted, flags,
 			salary_text, is_easy_apply, match_rating, applied_at, created_at, updated_at, deleted_at
 	`
 
 	job, err := scanJob(d.pool.QueryRow(ctx, query,
 		params.CompanyName,
+		params.CompanySize,
 		params.RoleTitle,
 		params.Location,
 		params.JobDescription,
@@ -181,7 +185,7 @@ extracted, flags, salary_text, is_easy_apply, match_rating, applied_at
 
 func (d *PgxJobDAO) GetByID(ctx context.Context, id uuid.UUID) (*Job, error) {
 	query := `
-		SELECT id, company_name, role_title, location, job_description, apply_link, linkedin_job_url,
+		SELECT id, company_name, company_size, role_title, location, job_description, apply_link, linkedin_job_url,
 			resume_link, status, verdict, total_score, discard_reason, reject_reason, section_scores, extracted, flags,
 			salary_text, is_easy_apply, match_rating, applied_at, created_at, updated_at, deleted_at
 		FROM jobs
@@ -283,7 +287,7 @@ func (d *PgxJobDAO) List(ctx context.Context, params ListJobsParams) ([]Job, int
 			orderBy = fmt.Sprintf("%s IS NULL, %s DESC, updated_at DESC", scoreExpr, scoreExpr)
 		}
 	}
-	listQuery := "\n\t\tSELECT id, company_name, role_title, location, job_description, apply_link, linkedin_job_url,\n\t\t\tresume_link, status, verdict, total_score, discard_reason, reject_reason, section_scores, extracted, flags,\n\t\t\tsalary_text, is_easy_apply, match_rating, applied_at, created_at, updated_at, deleted_at\n\t\tFROM jobs " + baseWhere +
+	listQuery := "\n\t\tSELECT id, company_name, company_size, role_title, location, job_description, apply_link, linkedin_job_url,\n\t\t\tresume_link, status, verdict, total_score, discard_reason, reject_reason, section_scores, extracted, flags,\n\t\t\tsalary_text, is_easy_apply, match_rating, applied_at, created_at, updated_at, deleted_at\n\t\tFROM jobs " + baseWhere +
 		fmt.Sprintf(" ORDER BY %s LIMIT $%d OFFSET $%d", orderBy, argPos, argPos+1)
 
 	listArgs := append(args, params.Limit, offset)
@@ -317,6 +321,11 @@ func (d *PgxJobDAO) Update(ctx context.Context, id uuid.UUID, params UpdateJobPa
 	if params.CompanyName != nil {
 		setClauses = append(setClauses, fmt.Sprintf("company_name = $%d", argPos))
 		args = append(args, *params.CompanyName)
+		argPos++
+	}
+	if params.CompanySize != nil {
+		setClauses = append(setClauses, fmt.Sprintf("company_size = $%d", argPos))
+		args = append(args, *params.CompanySize)
 		argPos++
 	}
 	if params.RoleTitle != nil {
@@ -423,7 +432,7 @@ func (d *PgxJobDAO) Update(ctx context.Context, id uuid.UUID, params UpdateJobPa
 		UPDATE jobs
 		SET %s
 		WHERE id = $%d AND deleted_at IS NULL
-		RETURNING id, company_name, role_title, location, job_description, apply_link, linkedin_job_url,
+		RETURNING id, company_name, company_size, role_title, location, job_description, apply_link, linkedin_job_url,
 			resume_link, status, verdict, total_score, discard_reason, reject_reason, section_scores, extracted, flags,
 			salary_text, is_easy_apply, match_rating, applied_at, created_at, updated_at, deleted_at
 	`, strings.Join(setClauses, ", "), argPos)
@@ -603,6 +612,7 @@ func scanJob(row rowScanner) (*Job, error) {
 	if err := row.Scan(
 		&job.ID,
 		&job.CompanyName,
+		&job.CompanySize,
 		&job.RoleTitle,
 		&job.Location,
 		&job.JobDescription,

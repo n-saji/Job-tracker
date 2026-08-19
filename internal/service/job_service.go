@@ -50,6 +50,7 @@ func (s *JobService) Create(ctx context.Context, req dto.CreateJobRequest) (*dao
 
 	job, err := s.dao.Create(ctx, dao.CreateJobParams{
 		CompanyName:    strings.TrimSpace(req.CompanyName),
+		CompanySize:    trimOptionalString(req.CompanySize),
 		RoleTitle:      strings.TrimSpace(req.RoleTitle),
 		Location:       strings.TrimSpace(req.Location),
 		JobDescription: strings.TrimSpace(req.JobDescription),
@@ -607,6 +608,11 @@ func validateAndBuildUpdate(req dto.UpdateJobRequest, current *dao.Job) (dao.Upd
 		value := strings.TrimSpace(*req.SalaryText)
 		params.SalaryText = &value
 	}
+	if req.CompanySize != nil {
+		provided = true
+		value := strings.TrimSpace(*req.CompanySize)
+		params.CompanySize = &value
+	}
 	if req.IsEasyApply != nil {
 		provided = true
 		params.IsEasyApply = req.IsEasyApply
@@ -843,6 +849,14 @@ func derefString(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+func trimOptionalString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	return &trimmed
 }
 
 func normalizeApplyLink(raw string) string {

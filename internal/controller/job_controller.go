@@ -433,6 +433,7 @@ func mapJob(job *dao.Job) dto.JobResponse {
 	return dto.JobResponse{
 		ID:             job.ID.String(),
 		CompanyName:    job.CompanyName,
+		CompanySize:    job.CompanySize,
 		RoleTitle:      job.RoleTitle,
 		Location:       job.Location,
 		JobDescription: job.JobDescription,

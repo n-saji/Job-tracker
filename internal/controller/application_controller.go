@@ -21,42 +21,17 @@ func NewApplicationController(svc *service.ApplicationService, requestTimeout ti
 	return &ApplicationController{service: svc, requestTimeout: requestTimeout}
 }
 
-func (c *ApplicationController) CreateApplication(w http.ResponseWriter, r *http.Request) {
+func (c *ApplicationController) CreateAgentSession(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := service.WithTimeout(r.Context(), c.requestTimeout)
 	defer cancel()
 
-	var req dto.CreateApplicationRequest
+	var req dto.CreateAgentSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, globals.CodeBadRequest, "invalid request payload")
 		return
 	}
-	if req.Mode == "" {
-		req.Mode = "review"
-	}
 
-	resp, err := c.service.CreateApplication(ctx, req.JobID, req.Mode)
-	if err != nil {
-		writeServiceError(w, err)
-		return
-	}
-
-	writeJSON(w, http.StatusCreated, resp)
-}
-
-func (c *ApplicationController) BulkCreateApplications(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := service.WithTimeout(r.Context(), c.requestTimeout)
-	defer cancel()
-
-	var req dto.BulkCreateApplicationsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, globals.CodeBadRequest, "invalid request payload")
-		return
-	}
-	if req.Mode == "" {
-		req.Mode = "review"
-	}
-
-	resp, err := c.service.BulkCreateApplications(ctx, req.JobIDs, req.Mode)
+	resp, err := c.service.CreateAgentSession(ctx, req.JobID)
 	if err != nil {
 		writeServiceError(w, err)
 		return
